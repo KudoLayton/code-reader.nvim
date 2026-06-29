@@ -10,6 +10,11 @@ local state = {
   options = {
     focus = true,
     max_dim_lines = 5000,
+    mermaid = {
+      enabled = true,
+      timeout_ms = 2000,
+      use_ascii = false,
+    },
   },
 }
 
@@ -102,7 +107,7 @@ end
 
 function M.setup(opts)
   opts = opts or {}
-  state.options = vim.tbl_extend("force", state.options, opts)
+  state.options = vim.tbl_deep_extend("force", state.options, opts)
   state.focus = state.options.focus ~= false
 end
 

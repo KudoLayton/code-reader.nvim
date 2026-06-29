@@ -1,4 +1,5 @@
 local source = require("code_reader.source")
+local mermaid = require("code_reader.mermaid")
 
 local M = {}
 
@@ -22,6 +23,10 @@ local function split_lines(text)
     table.insert(lines, line)
   end
   return lines
+end
+
+local function render_markdown_lines(text, state)
+  return mermaid.render_lines(split_lines(text), state.options and state.options.mermaid or {})
 end
 
 local function create_scratch(name, filetype)
@@ -246,7 +251,7 @@ function M.render_explanation(state)
     "",
   }
 
-  for _, line in ipairs(split_lines(step.content)) do
+  for _, line in ipairs(render_markdown_lines(step.content, state)) do
     table.insert(lines, line)
   end
 
@@ -298,7 +303,7 @@ function M.render_front_page(state)
     "",
   }
 
-  for _, line in ipairs(split_lines(step.content)) do
+  for _, line in ipairs(render_markdown_lines(step.content, state)) do
     table.insert(lines, line)
   end
 

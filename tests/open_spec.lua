@@ -33,12 +33,22 @@ vim.fn.writefile({
   "",
   "This walkthrough introduces the demo request flow.",
   "",
+  "```mermaid",
+  "flowchart TD",
+  "  Front --> Steps",
+  "```",
+  "",
   "---",
   "# 1. Module setup",
   "",
   "Source: `src/app.lua#L1-L2`",
   "",
   "The module table is prepared.",
+  "",
+  "``` mermaid",
+  "flowchart TD",
+  "  Setup --> Run",
+  "```",
   "",
   "---",
   "## 1.1. Run function",
@@ -57,9 +67,18 @@ vim.fn.writefile({
 
 vim.cmd("edit " .. vim.fn.fnameescape(source_file))
 local initial_code_buf = vim.api.nvim_get_current_buf()
+local code_reader = require("code_reader")
+code_reader.setup({
+  mermaid = {
+    command = {
+      "lua",
+      "-e",
+      "io.read('*a'); print('rendered mermaid diagram')",
+    },
+  },
+})
 vim.cmd("CodeReaderOpen " .. vim.fn.fnameescape(explanation_file))
 
-local code_reader = require("code_reader")
 local state = code_reader.state()
 
 eq(#state.doc.steps, 4, "opened step count")
@@ -74,6 +93,8 @@ local front_page_lines = vim.api.nvim_buf_get_lines(vim.api.nvim_win_get_buf(sta
 local front_page = table.concat(front_page_lines, "\n")
 eq(front_page:find("# Code Reader Overview", 1, true) ~= nil, true, "front page title")
 eq(front_page:find("This walkthrough introduces the demo request flow.", 1, true) ~= nil, true, "front page content")
+eq(front_page:find("rendered mermaid diagram", 1, true) ~= nil, true, "front page mermaid rendered")
+eq(front_page:find("```mermaid", 1, true), nil, "front page mermaid fence removed")
 eq(front_page:find("## Explanation Targets", 1, true) ~= nil, true, "front page targets heading")
 eq(front_page:find("- `src/app.lua`", 1, true) ~= nil, true, "front page target source")
 eq(front_page:find("## Table of Contents", 1, true) ~= nil, true, "front page toc heading")
@@ -84,6 +105,8 @@ eq(front_page:find("    - [[1.1.1|Return value]]", 1, true) ~= nil, true, "front
 code_reader.next()
 eq(state.current, 2, "next step")
 eq(vim.api.nvim_buf_get_lines(state.buffers.explanation, 0, 1, false)[1], "# 1 Module setup", "next explanation title")
+local rendered_explanation = table.concat(vim.api.nvim_buf_get_lines(state.buffers.explanation, 0, -1, false), "\n")
+eq(rendered_explanation:find("rendered mermaid diagram", 1, true) ~= nil, true, "explanation mermaid rendered")
 eq(vim.api.nvim_buf_get_name(vim.api.nvim_win_get_buf(state.windows.code)), source_file, "next step opens source")
 
 code_reader.prev()
