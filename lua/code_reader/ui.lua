@@ -59,6 +59,10 @@ local function step_link(step)
   return "[[" .. step.id .. "|" .. step.title .. "]]"
 end
 
+local function is_front_page(step)
+  return step and step.kind == "front_page"
+end
+
 local function parent_step(state, step)
   if not step or not step.id then
     return nil
@@ -130,6 +134,40 @@ local function append_navigation(lines, state, step, source_ref)
   table.insert(lines, "- Source: `" .. source_ref_label(source_ref) .. "`")
 end
 
+local function collect_source_paths(state)
+  local paths = {}
+  local seen = {}
+
+  for _, step in ipairs(state.doc.steps or {}) do
+    if not is_front_page(step) then
+      for _, source_ref in ipairs(step.sources or {}) do
+        local path = source_ref.path
+        if path and not seen[path] then
+          table.insert(paths, path)
+          seen[path] = true
+        end
+      end
+    end
+  end
+
+  return paths
+end
+
+local function append_front_page_toc(lines, state)
+  local count = 0
+  for _, step in ipairs(state.doc.steps or {}) do
+    if not is_front_page(step) then
+      local indent = string.rep("  ", math.max(0, (step.depth or 1) - 1))
+      table.insert(lines, indent .. "- " .. step_link(step))
+      count = count + 1
+    end
+  end
+
+  if count == 0 then
+    table.insert(lines, "- none")
+  end
+end
+
 function M.setup_highlights()
   vim.api.nvim_set_hl(0, "CodeReaderActiveLine", { bg = "#263238", default = true })
   vim.api.nvim_set_hl(0, "CodeReaderDimLine", { fg = "#6b7280", default = true })
@@ -148,6 +186,9 @@ function M.open_layout(state)
   state.buffers = state.buffers or {}
 
   state.windows.code = vim.api.nvim_get_current_win()
+  state.buffers.code = vim.api.nvim_win_get_buf(state.windows.code)
+  state.buffers.front_page = create_scratch("code-reader://front-page", "markdown")
+  vim.api.nvim_set_option_value("bufhidden", "hide", { buf = state.buffers.front_page })
   state.buffers.explanation = create_scratch("code-reader://explanation", "markdown")
   state.buffers.toc = create_scratch("code-reader://toc", "code_reader_toc")
 
@@ -172,6 +213,21 @@ function M.render_explanation(state)
   local step = state.doc.steps[state.current]
   if not step then
     set_lines(state.buffers.explanation, { "# Code Reader", "", "No step selected." })
+    return
+  end
+
+  if is_front_page(step) then
+    local lines = {
+      "# " .. step.id .. " " .. step.title,
+      "",
+      "Step: " .. tostring(state.current) .. " / " .. tostring(#state.doc.steps),
+      "Source: none",
+      "Status: overview",
+      "",
+    }
+
+    append_navigation(lines, state, step, nil)
+    set_lines(state.buffers.explanation, lines)
     return
   end
 
@@ -231,8 +287,51 @@ function M.render_toc(state)
   end
 end
 
+function M.render_front_page(state)
+  local step = state.doc.steps[state.current]
+  if not is_front_page(step) or not valid_win(state.windows.code) or not valid_buf(state.buffers.front_page) then
+    return
+  end
+
+  local lines = {
+    "# " .. step.title,
+    "",
+  }
+
+  for _, line in ipairs(split_lines(step.content)) do
+    table.insert(lines, line)
+  end
+
+  table.insert(lines, "")
+  table.insert(lines, "## Explanation Targets")
+  table.insert(lines, "")
+
+  local paths = collect_source_paths(state)
+  if #paths == 0 then
+    table.insert(lines, "- none")
+  else
+    for _, path in ipairs(paths) do
+      table.insert(lines, "- `" .. path .. "`")
+    end
+  end
+
+  table.insert(lines, "")
+  table.insert(lines, "## Table of Contents")
+  table.insert(lines, "")
+  append_front_page_toc(lines, state)
+
+  set_lines(state.buffers.front_page, lines)
+  vim.api.nvim_win_set_buf(state.windows.code, state.buffers.front_page)
+  vim.api.nvim_win_set_cursor(state.windows.code, { 1, 0 })
+end
+
 function M.render_source(state)
   local step = state.doc.steps[state.current]
+  if is_front_page(step) then
+    M.render_front_page(state)
+    return
+  end
+
   if not step or not step.sources[1] or not valid_win(state.windows.code) then
     return
   end
@@ -287,6 +386,18 @@ function M.render(state)
   M.render_explanation(state)
   M.render_toc(state)
   M.render_source(state)
+end
+
+function M.restore_code_buffer(state)
+  local code_win = state.windows and state.windows.code
+  local code_buf = state.buffers and state.buffers.code
+  local front_page_buf = state.buffers and state.buffers.front_page
+  if not (valid_win(code_win) and valid_buf(code_buf) and valid_buf(front_page_buf)) then
+    return
+  end
+  if vim.api.nvim_win_get_buf(code_win) == front_page_buf then
+    pcall(vim.api.nvim_win_set_buf, code_win, code_buf)
+  end
 end
 
 function M.reset_explanation_view(state)

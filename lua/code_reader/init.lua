@@ -80,6 +80,16 @@ local function set_buffer_keymaps()
       require("code_reader").close()
     end, { buffer = state.buffers.toc, silent = true, desc = "Code Reader close" })
   end
+
+  if state.buffers and state.buffers.front_page and vim.api.nvim_buf_is_valid(state.buffers.front_page) then
+    vim.keymap.set("n", "<CR>", function()
+      require("code_reader").activate()
+    end, { buffer = state.buffers.front_page, silent = true, desc = "Code Reader activate front page link" })
+
+    vim.keymap.set("n", "q", function()
+      require("code_reader").close()
+    end, { buffer = state.buffers.front_page, silent = true, desc = "Code Reader close" })
+  end
 end
 
 local function valid_win(win)
@@ -173,6 +183,7 @@ end
 function M.close()
   symbols.clear()
   ui.clear_source_highlights(state)
+  ui.restore_code_buffer(state)
 
   local windows = state.windows or {}
   for _, name in ipairs({ "explanation", "toc" }) do
@@ -183,7 +194,7 @@ function M.close()
   end
 
   local buffers = state.buffers or {}
-  for _, name in ipairs({ "explanation", "toc" }) do
+  for _, name in ipairs({ "explanation", "toc", "front_page" }) do
     local buf = buffers[name]
     if valid_buf(buf) then
       pcall(vim.api.nvim_buf_delete, buf, { force = true })
@@ -216,7 +227,7 @@ function M.activate()
     return
   end
 
-  if not (state.buffers and buf == state.buffers.explanation) then
+  if not (state.buffers and (buf == state.buffers.explanation or buf == state.buffers.front_page)) then
     return
   end
 
