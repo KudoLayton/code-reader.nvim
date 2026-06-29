@@ -84,6 +84,7 @@ Open the markdown file with `:CodeReaderOpen`. Code Reader parses the referenced
 - If the current source already matches the post-change context, Code Reader reconstructs the before version in memory and still shows full-file before/after buffers.
 - If the hunk context is stale or only partially matches, Code Reader falls back to a patch-only side-by-side snippet.
 - Diff side-by-side views include old/new line-number gutters, `~`/`+`/`-`/`>` markers, moved-line detection, and inline highlights for modified spans.
+- Diff side-by-side views apply Tree-sitter syntax highlighting to the code portion when a parser is available for the changed file.
 - Focus mode also applies to full-file diff views: unrelated rows are dimmed while the current explanation hunk stays highlighted.
 
 Symbol links must always name the source path:
@@ -146,6 +147,12 @@ Inside the explanation panel, `[r` and `]r` move between steps. Press `<CR>` on 
 
 In the TOC panel, press `<CR>` to jump to the selected step. The explanation view and code view update together while focus stays in the TOC. Press `<CR>` on an internal step link or a `treesitter://` symbol link in the explanation panel to activate it.
 
+## Rendering
+
+Code Reader highlights fenced code blocks in explanation and front-page Markdown buffers with Tree-sitter when the block language has a parser. Code Reader-specific navigation targets such as `[[step-id|label]]`, `treesitter://` links, `Source:` references, and `Diff:` references receive their own highlights without changing the underlying Markdown text, so `<CR>` activation continues to use the raw link syntax.
+
+If [render-markdown.nvim](https://github.com/MeanderingProgrammer/render-markdown.nvim) is installed and configured, Code Reader asks it to render the Markdown scratch buffers. This is optional; tables, callouts, and richer Markdown decoration are provided by render-markdown.nvim when present, while Code Reader's own syntax and navigation highlights still work without it.
+
 ## Mermaid
 
 Mermaid rendering is enabled by default. Code Reader uses a small Node helper backed by `beautiful-mermaid` to render `mermaid` fenced code blocks as text diagrams. Install the npm dependency from the plugin root:
@@ -200,10 +207,13 @@ Open the diff explanation demo from the same project root:
 ```powershell
 lua tests/parser_spec.lua
 lua tests/links_spec.lua
+nvim --headless -u NONE -l tests/diff_spec.lua
+nvim --headless -u NONE -l tests/diff_render_spec.lua
 nvim --headless -u NONE -l tests/mermaid_spec.lua
 nvim --headless -u NONE -l tests/health_spec.lua
 nvim --headless -u NONE -l tests/nvim_spec.lua
 nvim --headless -u NONE -l tests/open_spec.lua
+nvim --headless -u NONE -l tests/diff_open_spec.lua
 nvim --headless -u NONE -l tests/symbol_spec.lua
 nvim --headless -u NONE -l tests/demo_spec.lua
 ```
