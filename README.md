@@ -16,7 +16,9 @@ version: 1
 
 Source: `src/server.lua#L10-L30`
 
-Explain the top-level flow here.
+Explain the top-level flow here. Continue at [[1.1|Parse request]].
+
+[server symbol](<treesitter://src/server.lua?query=(identifier) @code_reader.symbol>)
 
 ---
 ## 1.1. Parse request
@@ -32,6 +34,16 @@ Explain the nested call-stack detail here.
 - Heading depth drives TOC nesting, so `## 1.1 ...` becomes a nested call-stack step.
 - GitHub-style `path#Lx` and `path#Lx-Ly` references define the source range.
 - Optional source hashes can be appended as `path#Lx-Ly@sha256:<hash>`.
+- Obsidian-style `[[step-id]]` and `[[step-id|label]]` links jump to another step in the same explanation file.
+- Markdown links that start with `treesitter://` highlight symbols in the named source file.
+
+Symbol links must always name the source path:
+
+```markdown
+[run](<treesitter://src/app.lua?query=(identifier) @code_reader.symbol>)
+```
+
+The source path is resolved from the project root. The Tree-sitter query selects the seed symbol with `@code_reader.symbol`; if that capture is not present, the first capture is used. When an LSP client supports `textDocument/documentHighlight`, Code Reader highlights the matching symbols reported by LSP. Without LSP results, it falls back to highlighting every Tree-sitter capture from the query.
 
 ## Installation
 
@@ -81,9 +93,14 @@ Commands:
 
 Inside the explanation panel, `[r` and `]r` move between steps. Press `<CR>` on `Previous`, `Next`, or `Source` footer lines to activate them. In the TOC panel, press `<CR>` to jump to the selected step.
 
+Press `<CR>` on an internal step link or a `treesitter://` symbol link in the explanation panel to activate it.
+
 ## Tests
 
 ```powershell
 lua tests/parser_spec.lua
+lua tests/links_spec.lua
 nvim --headless -u NONE -l tests/nvim_spec.lua
+nvim --headless -u NONE -l tests/open_spec.lua
+nvim --headless -u NONE -l tests/symbol_spec.lua
 ```
