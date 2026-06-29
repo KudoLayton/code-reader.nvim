@@ -234,6 +234,7 @@ local has_word_mark = false
 for _, mark in ipairs(before_marks) do
   local details = mark[4] or {}
   if details.hl_group == "CodeReaderDiffWord" then
+    eq((details.priority or 0) < 10000, true, "modified word highlight stays below syntax")
     has_word_mark = true
     break
   end

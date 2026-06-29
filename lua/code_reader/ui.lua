@@ -49,6 +49,7 @@ local function add_line_background(buf, line_index, group, priority)
     end_col = 0,
     hl_group = group,
     hl_eol = true,
+    hl_mode = "combine",
     priority = priority or 80,
   })
 end
@@ -309,7 +310,8 @@ local function apply_diff_cell_highlight(buf, line_index, cell, gutter_width, in
         vim.api.nvim_buf_set_extmark(buf, namespace, line_index, gutter_width + span.start_col, {
           end_col = gutter_width + span.end_col,
           hl_group = "CodeReaderDiffWord",
-          priority = 10010,
+          hl_mode = "combine",
+          priority = 90,
         })
       end
     end
