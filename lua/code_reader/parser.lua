@@ -224,15 +224,19 @@ function M.parse(text, opts)
   local frontmatter, start_index = parse_frontmatter(lines)
   local sections = split_sections(lines, start_index)
   local steps = {}
+  local step_by_id = {}
 
   for index, section in ipairs(sections) do
-    table.insert(steps, parse_step(section, index))
+    local step = parse_step(section, index)
+    table.insert(steps, step)
+    step_by_id[step.id] = index
   end
 
   return {
     path = opts.path,
     frontmatter = frontmatter,
     steps = steps,
+    step_by_id = step_by_id,
   }
 end
 
