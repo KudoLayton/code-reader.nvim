@@ -1,6 +1,8 @@
 local parser = require("code_reader.parser")
 local ui = require("code_reader.ui")
 local source = require("code_reader.source")
+local links = require("code_reader.links")
+local symbols = require("code_reader.symbols")
 
 local M = {}
 
@@ -116,6 +118,7 @@ function M.goto_step(index)
   end
 
   state.current = clamp_step(tonumber(index) or state.current)
+  symbols.clear()
   ui.render(state)
 end
 
@@ -164,6 +167,30 @@ function M.activate()
     M.next()
   elseif line:match("^Source:") then
     M.open_source()
+    return
+  end
+
+  if not (state.buffers and buf == state.buffers.explanation) then
+    return
+  end
+
+  local cursor = vim.api.nvim_win_get_cursor(0)
+  local link = links.find_at(line, cursor[2] + 1)
+  if not link then
+    return
+  end
+
+  if link.kind == "step" then
+    local step_index = state.doc and state.doc.step_by_id and state.doc.step_by_id[link.target]
+    if step_index then
+      M.goto_step(step_index)
+    else
+      vim.notify("Code Reader: step not found: " .. link.target, vim.log.levels.WARN)
+    end
+  elseif link.kind == "treesitter" then
+    symbols.highlight(state, link)
+  elseif link.kind == "invalid" then
+    vim.notify("Code Reader: invalid link: " .. link.reason, vim.log.levels.WARN)
   end
 end
 
