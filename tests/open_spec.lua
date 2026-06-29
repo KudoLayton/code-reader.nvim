@@ -50,7 +50,7 @@ local function has_syntax_at_text_start(buf, line_text, language)
           and (details.end_col or start_col) > start_col
           and details.hl_group
           and details.hl_group:match("^@.*%." .. language .. "$")
-          and (details.priority or 0) > 100
+          and (details.priority or 0) >= 10000
         then
           return true
         end
