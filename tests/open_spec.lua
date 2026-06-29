@@ -78,6 +78,42 @@ local function has_highlight(buf, line_text, group)
   return false
 end
 
+local function has_line_hl_group(buf, line_text, group)
+  local lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
+  for index, line in ipairs(lines) do
+    if line:find(line_text, 1, true) then
+      local marks = vim.api.nvim_buf_get_extmarks(buf, -1, { index - 1, 0 }, { index - 1, -1 }, {
+        details = true,
+      })
+      for _, mark in ipairs(marks) do
+        local details = mark[4] or {}
+        if details.line_hl_group == group then
+          return true
+        end
+      end
+    end
+  end
+  return false
+end
+
+local function has_line_background(buf, line_text, group)
+  local lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
+  for index, line in ipairs(lines) do
+    if line:find(line_text, 1, true) then
+      local marks = vim.api.nvim_buf_get_extmarks(buf, -1, { index - 1, 0 }, { index - 1, -1 }, {
+        details = true,
+      })
+      for _, mark in ipairs(marks) do
+        local details = mark[4] or {}
+        if details.hl_group == group and details.hl_eol then
+          return true
+        end
+      end
+    end
+  end
+  return false
+end
+
 local tmp = vim.fn.tempname()
 vim.fn.mkdir(tmp .. "/.code_reader", "p")
 vim.fn.mkdir(tmp .. "/src", "p")
@@ -199,6 +235,8 @@ eq(has_syntax_highlight(state.buffers.explanation, "local enabled = true", "lua"
 eq(has_syntax_at_text_start(state.buffers.explanation, "local enabled = true", "lua"), true, "explanation code block first character highlighted")
 eq(has_highlight(state.buffers.explanation, "treesitter://src/app.lua", "CodeReaderSymbolLink"), true, "symbol link highlighted")
 eq(vim.api.nvim_buf_get_name(vim.api.nvim_win_get_buf(state.windows.code)), source_file, "next step opens source")
+eq(has_line_background(vim.api.nvim_win_get_buf(state.windows.code), "local M = {}", "CodeReaderActiveLine"), true, "source active range uses line background")
+eq(has_line_hl_group(vim.api.nvim_win_get_buf(state.windows.code), "local M = {}", "CodeReaderActiveLine"), false, "source active range avoids line_hl_group")
 eq(#render_markdown_calls > 0, true, "render-markdown integration called")
 eq(render_markdown_calls[#render_markdown_calls].buf, state.buffers.explanation, "render-markdown explanation buffer")
 eq(render_markdown_calls[#render_markdown_calls].event, "CodeReader", "render-markdown event")

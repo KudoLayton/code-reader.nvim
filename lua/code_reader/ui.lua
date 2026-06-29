@@ -43,6 +43,16 @@ local function add_range_highlight(buf, line_index, start_col, end_col, group)
   end
 end
 
+local function add_line_background(buf, line_index, group, priority)
+  vim.api.nvim_buf_set_extmark(buf, namespace, line_index, 0, {
+    end_row = line_index + 1,
+    end_col = 0,
+    hl_group = group,
+    hl_eol = true,
+    priority = priority or 80,
+  })
+end
+
 local function add_pattern_highlights(buf, line_index, line, pattern, group)
   local cursor = 1
   while cursor <= #line do
@@ -833,9 +843,7 @@ function M.render_source(state)
   vim.api.nvim_buf_clear_namespace(buf, namespace, 0, -1)
   for line = 1, line_count do
     if line >= start_line and line <= end_line then
-      vim.api.nvim_buf_set_extmark(buf, namespace, line - 1, 0, {
-        line_hl_group = "CodeReaderActiveLine",
-      })
+      add_line_background(buf, line - 1, "CodeReaderActiveLine")
     elseif state.focus and line_count <= (state.options.max_dim_lines or 5000) then
       vim.api.nvim_buf_add_highlight(buf, namespace, "CodeReaderDimLine", line - 1, 0, -1)
     end
