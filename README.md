@@ -52,6 +52,38 @@ Explain the nested call-stack detail here.
 - Markdown links that start with `treesitter://` highlight symbols in the named source file.
 - Fenced code blocks marked as `mermaid` are rendered as text diagrams when Mermaid support is available.
 
+## Diff Explanation Format
+
+Diff explanations use the same section and navigation model with a different frontmatter type. Store the diff and its explanation together, usually under `.code_reader/diffs/`:
+
+```markdown
+---
+type: code-reader-diff
+version: 1
+diff: ./change.diff
+---
+
+<!-- code-reader: front-page -->
+# Diff Overview
+
+Explain the change set.
+
+---
+# 1. Toggle flag
+
+Diff: `src/app.lua#H1`
+
+Explain the first hunk.
+```
+
+Open the markdown file with `:CodeReaderOpen`. Code Reader parses the referenced unified diff, opens a side-by-side before/after view, and shows automatic coverage on the front page.
+
+- Coverage is based on changed lines inside hunks, not raw diff header or context lines.
+- `Diff: path#Hn` references the nth hunk for that file.
+- If the current source matches the pre-change context, Code Reader shows full-file before/after buffers with an in-memory patched after version.
+- If the current source already matches the post-change context, Code Reader reconstructs the before version in memory and still shows full-file before/after buffers.
+- If the hunk context is stale or only partially matches, Code Reader falls back to a patch-only side-by-side snippet.
+
 Symbol links must always name the source path:
 
 ```markdown
@@ -153,6 +185,12 @@ nvim .
 
 ```vim
 :CodeReaderOpen .code_reader/walkthrough.md
+```
+
+Open the diff explanation demo from the same project root:
+
+```vim
+:CodeReaderOpen .code_reader/diffs/request-update.md
 ```
 
 ## Tests

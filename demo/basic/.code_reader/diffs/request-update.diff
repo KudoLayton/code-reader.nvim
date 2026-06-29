@@ -1,0 +1,21 @@
+diff --git a/src/request.lua b/src/request.lua
+index 1111111..2222222 100644
+--- a/src/request.lua
++++ b/src/request.lua
+@@ -15,7 +15,7 @@ function request.validate_request(parsed)
+-  if parsed.method ~= "GET" and parsed.method ~= "POST" then
++  if parsed.method ~= "GET" and parsed.method ~= "POST" and parsed.method ~= "PUT" then
+     return false, "unsupported method"
+   end
+ 
+diff --git a/src/response.lua b/src/response.lua
+index 3333333..4444444 100644
+--- a/src/response.lua
++++ b/src/response.lua
+@@ -7,7 +7,7 @@ end
+ function response.render_response(parsed)
+   return {
+-    status = status_line(200),
++    status = status_line(201),
+     body = "Hello, " .. parsed.user .. " from " .. parsed.path,
+   }

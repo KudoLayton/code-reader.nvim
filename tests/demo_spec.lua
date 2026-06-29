@@ -8,6 +8,7 @@ package.path = table.concat({
 
 local parser = require("code_reader.parser")
 local links = require("code_reader.links")
+local diff = require("code_reader.diff")
 
 local function eq(actual, expected, label)
   if actual ~= expected then
@@ -24,6 +25,8 @@ end
 local root = vim.fn.getcwd()
 local demo_root = root .. "/demo/basic"
 local explanation_path = demo_root .. "/.code_reader/walkthrough.md"
+local diff_explanation_path = demo_root .. "/.code_reader/diffs/request-update.md"
+local diff_path = demo_root .. "/.code_reader/diffs/request-update.diff"
 
 local lines = vim.fn.readfile(explanation_path)
 local doc = parser.parse(table.concat(lines, "\n"), { path = explanation_path })
@@ -95,6 +98,29 @@ for line_number, line in ipairs(lines) do
     ok(link.query and link.query ~= "", "treesitter link has query at line " .. line_number)
     eq(vim.fn.filereadable(demo_root .. "/" .. link.path), 1, "treesitter source exists: " .. link.path)
     search_from = start_index + 1
+  end
+end
+
+local diff_lines = vim.fn.readfile(diff_explanation_path)
+local diff_doc = parser.parse(table.concat(diff_lines, "\n"), { path = diff_explanation_path })
+local parsed_diff = diff.parse(table.concat(vim.fn.readfile(diff_path), "\n"))
+
+eq(diff_doc.frontmatter.type, "code-reader-diff", "diff demo frontmatter type")
+eq(diff_doc.frontmatter.diff, "./request-update.diff", "diff demo diff path")
+eq(#diff_doc.steps, 3, "diff demo step count")
+eq(diff_doc.front_page_index, 1, "diff demo front page index")
+eq(#parsed_diff.files, 2, "diff demo file count")
+eq(parsed_diff.total_changed_lines, 4, "diff demo changed line count")
+
+for _, step in ipairs(diff_doc.steps) do
+  if step.kind ~= "front_page" then
+    ok(#step.diff_refs > 0, "diff demo step has diff ref: " .. step.id)
+    for _, diff_ref in ipairs(step.diff_refs) do
+      local file = parsed_diff.file_by_path[diff_ref.path]
+      ok(file, "diff demo file exists in diff: " .. diff_ref.path)
+      ok(file.hunk_by_id[diff_ref.hunk_id], "diff demo hunk exists: " .. diff_ref.path .. "#" .. diff_ref.hunk_id)
+      eq(vim.fn.filereadable(demo_root .. "/" .. diff_ref.path), 1, "diff demo source exists: " .. diff_ref.path)
+    end
   end
 end
 

@@ -1,5 +1,6 @@
 local source = require("code_reader.source")
 local mermaid = require("code_reader.mermaid")
+local diff = require("code_reader.diff")
 
 local M = {}
 
@@ -88,6 +89,53 @@ end
 
 local function is_front_page(step)
   return step and step.kind == "front_page"
+end
+
+local function is_diff_mode(state)
+  return state and state.diff ~= nil
+end
+
+local function read_source_lines(path)
+  local ok, lines = pcall(vim.fn.readfile, path)
+  if not ok then
+    return nil
+  end
+  return lines
+end
+
+local function diff_ref_label(diff_ref)
+  if not diff_ref then
+    return "none"
+  end
+  return diff_ref.path .. "#" .. diff_ref.hunk_id
+end
+
+local function find_diff_target(state, diff_ref)
+  if not (state and state.diff and diff_ref) then
+    return nil, nil
+  end
+  local file = state.diff.file_by_path[diff_ref.path]
+  local hunk = file and file.hunk_by_id and file.hunk_by_id[diff_ref.hunk_id]
+  return file, hunk
+end
+
+local function analyze_diff_file(state, file)
+  if not file then
+    return { status = "missing", before_lines = {}, after_lines = {} }
+  end
+  local path = source.resolve_path({ path = file.path }, { root = state.root })
+  local lines = read_source_lines(path)
+  if not lines then
+    return { status = "missing", before_lines = {}, after_lines = {} }
+  end
+  return diff.analyze_file(file, lines)
+end
+
+local function diff_view_label(analysis)
+  if analysis and (analysis.status == "applies" or analysis.status == "already-applied") then
+    return "full file side-by-side"
+  end
+  return "patch-only side-by-side"
 end
 
 local function parent_step(state, step)
@@ -195,6 +243,90 @@ local function append_front_page_toc(lines, state)
   end
 end
 
+local function count_diff_hunks(state)
+  local count = 0
+  for _, file in ipairs((state.diff and state.diff.files) or {}) do
+    count = count + #(file.hunks or {})
+  end
+  return count
+end
+
+local function diff_coverage(state)
+  local explained = 0
+  local explained_hunks = 0
+  local seen = {}
+  local sections = {}
+
+  for _, step in ipairs(state.doc.steps or {}) do
+    if not is_front_page(step) then
+      local section_lines = 0
+      local section_hunks = 0
+      for _, diff_ref in ipairs(step.diff_refs or {}) do
+        local file, hunk = find_diff_target(state, diff_ref)
+        if file and hunk then
+          section_lines = section_lines + hunk.changed_lines
+          section_hunks = section_hunks + 1
+          local key = file.path .. "#" .. hunk.id
+          if not seen[key] then
+            seen[key] = true
+            explained = explained + hunk.changed_lines
+            explained_hunks = explained_hunks + 1
+          end
+        end
+      end
+      if section_hunks > 0 then
+        table.insert(sections, {
+          step = step,
+          changed_lines = section_lines,
+          hunks = section_hunks,
+        })
+      end
+    end
+  end
+
+  return {
+    explained = explained,
+    explained_hunks = explained_hunks,
+    total = state.diff and state.diff.total_changed_lines or 0,
+    total_hunks = count_diff_hunks(state),
+    sections = sections,
+  }
+end
+
+local function append_diff_coverage(lines, state)
+  local coverage = diff_coverage(state)
+  local percent = coverage.total > 0 and (coverage.explained / coverage.total * 100) or 0
+
+  table.insert(lines, "")
+  table.insert(lines, "## Diff Coverage")
+  table.insert(lines, "")
+  table.insert(
+    lines,
+    string.format("Explained changes: %d / %d (%.1f%%)", coverage.explained, coverage.total, percent)
+  )
+  table.insert(lines, string.format("Explained hunks: %d / %d", coverage.explained_hunks, coverage.total_hunks))
+  table.insert(lines, "")
+  table.insert(lines, "### Sections")
+  table.insert(lines, "")
+  if #coverage.sections == 0 then
+    table.insert(lines, "- none")
+  else
+    for _, section in ipairs(coverage.sections) do
+      local section_percent = coverage.total > 0 and (section.changed_lines / coverage.total * 100) or 0
+      table.insert(
+        lines,
+        string.format(
+          "- %s: %d changed lines, %d hunks (%.1f%%)",
+          step_link(section.step),
+          section.changed_lines,
+          section.hunks,
+          section_percent
+        )
+      )
+    end
+  end
+end
+
 function M.setup_highlights()
   vim.api.nvim_set_hl(0, "CodeReaderActiveLine", { bg = "#263238", default = true })
   vim.api.nvim_set_hl(0, "CodeReaderDimLine", { fg = "#6b7280", default = true })
@@ -216,6 +348,15 @@ function M.open_layout(state)
   state.buffers.code = vim.api.nvim_win_get_buf(state.windows.code)
   state.buffers.front_page = create_scratch("code-reader://front-page", "markdown")
   vim.api.nvim_set_option_value("bufhidden", "hide", { buf = state.buffers.front_page })
+  if is_diff_mode(state) then
+    state.buffers.diff_before = create_scratch("code-reader://diff-before", "diff")
+    state.buffers.diff_after = create_scratch("code-reader://diff-after", "diff")
+    vim.api.nvim_set_option_value("bufhidden", "hide", { buf = state.buffers.diff_before })
+    vim.api.nvim_set_option_value("bufhidden", "hide", { buf = state.buffers.diff_after })
+    vim.cmd("vsplit")
+    state.windows.diff_after = vim.api.nvim_get_current_win()
+    vim.api.nvim_win_set_buf(state.windows.diff_after, state.buffers.diff_after)
+  end
   state.buffers.explanation = create_scratch("code-reader://explanation", "markdown")
   state.buffers.toc = create_scratch("code-reader://toc", "code_reader_toc")
 
@@ -252,6 +393,33 @@ function M.render_explanation(state)
       "Status: overview",
       "",
     }
+
+    append_navigation(lines, state, step, nil)
+    set_lines(state.buffers.explanation, lines)
+    return
+  end
+
+  if is_diff_mode(state) then
+    local diff_ref = step.diff_refs and step.diff_refs[1] or nil
+    local file, hunk = find_diff_target(state, diff_ref)
+    local analysis = analyze_diff_file(state, file)
+    local lines = {
+      "# " .. step.id .. " " .. step.title,
+      "",
+      "Step: " .. tostring(state.current) .. " / " .. tostring(#state.doc.steps),
+      "Diff: " .. diff_ref_label(diff_ref),
+      "View: " .. diff_view_label(analysis),
+      "Status: " .. (analysis.status or "unknown"),
+    }
+
+    if file and hunk then
+      table.insert(lines, diff.hunk_ref_label(file, hunk))
+    end
+    table.insert(lines, "")
+
+    for _, line in ipairs(render_markdown_lines(step.content, state)) do
+      table.insert(lines, line)
+    end
 
     append_navigation(lines, state, step, nil)
     set_lines(state.buffers.explanation, lines)
@@ -329,11 +497,24 @@ function M.render_front_page(state)
     table.insert(lines, line)
   end
 
+  if is_diff_mode(state) then
+    append_diff_coverage(lines, state)
+  end
+
   table.insert(lines, "")
-  table.insert(lines, "## Explanation Targets")
+  table.insert(lines, is_diff_mode(state) and "## Diff Targets" or "## Explanation Targets")
   table.insert(lines, "")
 
-  local paths = collect_source_paths(state)
+  local paths = {}
+  if is_diff_mode(state) then
+    for _, file in ipairs((state.diff and state.diff.files) or {}) do
+      if file.path then
+        table.insert(paths, file.path)
+      end
+    end
+  else
+    paths = collect_source_paths(state)
+  end
   if #paths == 0 then
     table.insert(lines, "- none")
   else
@@ -356,6 +537,68 @@ function M.render_source(state)
   local step = state.doc.steps[state.current]
   if is_front_page(step) then
     M.render_front_page(state)
+    return
+  end
+
+  if is_diff_mode(state) then
+    if not (valid_win(state.windows.code) and valid_win(state.windows.diff_after)) then
+      return
+    end
+
+    local diff_ref = step.diff_refs and step.diff_refs[1] or nil
+    local file, hunk = find_diff_target(state, diff_ref)
+    if not (file and hunk) then
+      return
+    end
+
+    local analysis = analyze_diff_file(state, file)
+    local before_lines = nil
+    local after_lines = nil
+    local before_cursor = hunk.old_start
+    local after_cursor = hunk.new_start
+    local full_view = analysis.status == "applies" or analysis.status == "already-applied"
+
+    if full_view then
+      before_lines = analysis.before_lines
+      after_lines = analysis.after_lines
+    else
+      before_lines, after_lines = diff.hunk_sides(hunk)
+      before_cursor = 1
+      after_cursor = 1
+    end
+
+    set_lines(state.buffers.diff_before, before_lines)
+    set_lines(state.buffers.diff_after, after_lines)
+    vim.api.nvim_win_set_buf(state.windows.code, state.buffers.diff_before)
+    vim.api.nvim_win_set_buf(state.windows.diff_after, state.buffers.diff_after)
+
+    local before_count = math.max(1, vim.api.nvim_buf_line_count(state.buffers.diff_before))
+    local after_count = math.max(1, vim.api.nvim_buf_line_count(state.buffers.diff_after))
+    before_cursor = math.max(1, math.min(before_cursor, before_count))
+    after_cursor = math.max(1, math.min(after_cursor, after_count))
+    vim.api.nvim_win_set_cursor(state.windows.code, { before_cursor, 0 })
+    vim.api.nvim_win_set_cursor(state.windows.diff_after, { after_cursor, 0 })
+
+    vim.api.nvim_buf_clear_namespace(state.buffers.diff_before, namespace, 0, -1)
+    vim.api.nvim_buf_clear_namespace(state.buffers.diff_after, namespace, 0, -1)
+    local before_start = full_view and hunk.old_start or 1
+    local before_end = full_view and hunk.old_end or #before_lines
+    local after_start = full_view and hunk.new_start or 1
+    local after_end = full_view and hunk.new_end or #after_lines
+    for line = before_start, before_end do
+      if line <= before_count then
+        vim.api.nvim_buf_set_extmark(state.buffers.diff_before, namespace, line - 1, 0, {
+          line_hl_group = "CodeReaderActiveLine",
+        })
+      end
+    end
+    for line = after_start, after_end do
+      if line <= after_count then
+        vim.api.nvim_buf_set_extmark(state.buffers.diff_after, namespace, line - 1, 0, {
+          line_hl_group = "CodeReaderActiveLine",
+        })
+      end
+    end
     return
   end
 
@@ -419,10 +662,12 @@ function M.restore_code_buffer(state)
   local code_win = state.windows and state.windows.code
   local code_buf = state.buffers and state.buffers.code
   local front_page_buf = state.buffers and state.buffers.front_page
-  if not (valid_win(code_win) and valid_buf(code_buf) and valid_buf(front_page_buf)) then
+  local diff_before_buf = state.buffers and state.buffers.diff_before
+  if not (valid_win(code_win) and valid_buf(code_buf)) then
     return
   end
-  if vim.api.nvim_win_get_buf(code_win) == front_page_buf then
+  local current_buf = vim.api.nvim_win_get_buf(code_win)
+  if current_buf == front_page_buf or current_buf == diff_before_buf then
     pcall(vim.api.nvim_win_set_buf, code_win, code_buf)
   end
 end

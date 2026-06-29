@@ -3,6 +3,7 @@ local ui = require("code_reader.ui")
 local source = require("code_reader.source")
 local links = require("code_reader.links")
 local symbols = require("code_reader.symbols")
+local diff = require("code_reader.diff")
 
 local M = {}
 
@@ -34,6 +35,16 @@ local function infer_root(path)
     return full:sub(1, start_index - 1)
   end
   return vim.fn.fnamemodify(full, ":h")
+end
+
+local function resolve_relative(base_path, target_path)
+  if not target_path or target_path == "" then
+    return nil
+  end
+  if target_path:match("^/") or target_path:match("^%a:[/\\]") then
+    return vim.fn.fnamemodify(target_path, ":p")
+  end
+  return vim.fn.fnamemodify(vim.fn.fnamemodify(base_path, ":h") .. "/" .. target_path, ":p")
 end
 
 local function current_file()
@@ -126,13 +137,24 @@ function M.open(path)
   end
 
   local doc = parser.parse(text, { path = path })
-  if doc.frontmatter.type ~= "code-reader" then
+  local diff_doc = nil
+  if doc.frontmatter.type == "code-reader-diff" then
+    local diff_path = resolve_relative(path, doc.frontmatter.diff)
+    local diff_text, diff_err = diff_path and read_file(diff_path) or nil, "missing diff frontmatter"
+    if not diff_text then
+      vim.notify("Code Reader: cannot read diff: " .. tostring(diff_err), vim.log.levels.ERROR)
+      return
+    end
+    diff_doc = diff.parse(diff_text)
+    diff_doc.path = diff_path
+  elseif doc.frontmatter.type ~= "code-reader" then
     vim.notify("Code Reader: frontmatter type is not code-reader", vim.log.levels.WARN)
   end
 
   state.path = path
   state.root = infer_root(path)
   state.doc = doc
+  state.diff = diff_doc
   state.current = 1
   state.focus = state.options.focus ~= false
   state.toc_line_to_step = {}
@@ -191,7 +213,7 @@ function M.close()
   ui.restore_code_buffer(state)
 
   local windows = state.windows or {}
-  for _, name in ipairs({ "explanation", "toc" }) do
+  for _, name in ipairs({ "explanation", "toc", "diff_after" }) do
     local win = windows[name]
     if valid_win(win) then
       pcall(vim.api.nvim_win_close, win, true)
@@ -199,7 +221,7 @@ function M.close()
   end
 
   local buffers = state.buffers or {}
-  for _, name in ipairs({ "explanation", "toc", "front_page" }) do
+  for _, name in ipairs({ "explanation", "toc", "front_page", "diff_before", "diff_after" }) do
     local buf = buffers[name]
     if valid_buf(buf) then
       pcall(vim.api.nvim_buf_delete, buf, { force = true })
@@ -209,6 +231,7 @@ function M.close()
   state.path = nil
   state.root = nil
   state.doc = nil
+  state.diff = nil
   state.current = nil
   state.toc_line_to_step = nil
   state.windows = nil

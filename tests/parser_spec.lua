@@ -92,4 +92,28 @@ eq(legacy_doc.front_page_index, nil, "legacy front page index")
 eq(legacy_doc.steps[1].kind, "step", "legacy step kind")
 eq(legacy_doc.steps[1].id, "1", "legacy step id")
 
+local diff_sample = [[
+---
+type: code-reader-diff
+version: 1
+diff: ./changes.diff
+---
+
+<!-- code-reader: front-page -->
+# Diff Overview
+
+Explain the change.
+
+---
+# 1. Toggle flag
+
+Diff: `src/app.lua#H2`
+]]
+
+local diff_doc = parser.parse(diff_sample, { path = ".code_reader/diffs/changes.md" })
+eq(diff_doc.frontmatter.type, "code-reader-diff", "diff frontmatter type")
+eq(diff_doc.frontmatter.diff, "./changes.diff", "diff frontmatter path")
+eq(diff_doc.steps[2].diff_refs[1].path, "src/app.lua", "diff ref path")
+eq(diff_doc.steps[2].diff_refs[1].hunk_id, "H2", "diff ref hunk")
+
 print("parser_spec: ok")

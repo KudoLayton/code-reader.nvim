@@ -177,6 +177,41 @@ local function parse_sources(lines)
   return sources
 end
 
+local function add_diff_ref(diff_refs, seen, path, hunk_id)
+  if not path or not hunk_id then
+    return
+  end
+
+  path = path:gsub("\\", "/")
+  hunk_id = hunk_id:upper()
+  local key = path .. "#" .. hunk_id
+  if seen[key] then
+    return
+  end
+
+  table.insert(diff_refs, {
+    path = path,
+    hunk_id = hunk_id,
+  })
+  seen[key] = true
+end
+
+local function parse_diff_refs(lines)
+  local diff_refs = {}
+  local seen = {}
+
+  for _, line in ipairs(lines) do
+    for path, hunk_id in line:gmatch("([%w%._%-/%\\]+)#(H%d+)") do
+      add_diff_ref(diff_refs, seen, path, hunk_id)
+    end
+    for path, hunk_number in line:gmatch("([%w%._%-/%\\]+)#h(%d+)") do
+      add_diff_ref(diff_refs, seen, path, "H" .. hunk_number)
+    end
+  end
+
+  return diff_refs
+end
+
 local function count_numeric_depth(id)
   if not id or id == "" then
     return 1
@@ -245,6 +280,7 @@ local function parse_step(lines, index)
     body = table.concat(step_lines, "\n"),
     content = section_content(step_lines, heading and heading.index),
     sources = parse_sources(step_lines),
+    diff_refs = parse_diff_refs(step_lines),
   }
 end
 

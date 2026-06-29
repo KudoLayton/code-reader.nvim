@@ -15,6 +15,12 @@ Then open the walkthrough:
 :CodeReaderOpen .code_reader/walkthrough.md
 ```
 
+To review the diff explanation demo:
+
+```vim
+:CodeReaderOpen .code_reader/diffs/request-update.md
+```
+
 Manual review checklist:
 
 - Confirm the layout opens with code, explanation, and TOC views.
@@ -26,3 +32,5 @@ Manual review checklist:
 - Run `:CodeReaderToggleFocus` and confirm unrelated source lines are dimmed.
 - Press `q` in the explanation or TOC panel and confirm Code Reader closes.
 - Edit a source file, reopen the walkthrough, and check the freshness status.
+- Open the diff demo and confirm the source area becomes a before/after side-by-side view.
+- Check that the diff demo front page reports changed-line and hunk coverage.
