@@ -72,6 +72,7 @@ Using lazy.nvim:
     "CodeReaderPrev",
     "CodeReaderGoto",
     "CodeReaderToggleFocus",
+    "CodeReaderClose",
   },
 }
 ```
@@ -90,10 +91,11 @@ Commands:
 - `:CodeReaderNext` and `:CodeReaderPrev` move between steps.
 - `:CodeReaderGoto {index}` jumps to a step by list index.
 - `:CodeReaderToggleFocus` toggles dimming for unrelated source lines.
+- `:CodeReaderClose` closes the explanation and TOC views and clears Code Reader highlights.
 
-Inside the explanation panel, `[r` and `]r` move between steps. Press `<CR>` on `Previous`, `Next`, or `Source` footer lines to activate them. In the TOC panel, press `<CR>` to jump to the selected step.
+Inside the explanation panel, `[r` and `]r` move between steps. Press `<CR>` on links in the `Navigation` list to jump to related steps or open the source. Press `q` in the explanation or TOC panel to close Code Reader.
 
-Press `<CR>` on an internal step link or a `treesitter://` symbol link in the explanation panel to activate it.
+In the TOC panel, press `<CR>` to jump to the selected step. The explanation view and code view update together while focus stays in the TOC. Press `<CR>` on an internal step link or a `treesitter://` symbol link in the explanation panel to activate it.
 
 ## Demo
 
