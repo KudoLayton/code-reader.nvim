@@ -65,13 +65,29 @@ local function set_buffer_keymaps()
     vim.keymap.set("n", "<CR>", function()
       require("code_reader").activate()
     end, { buffer = state.buffers.explanation, silent = true, desc = "Code Reader activate line" })
+
+    vim.keymap.set("n", "q", function()
+      require("code_reader").close()
+    end, { buffer = state.buffers.explanation, silent = true, desc = "Code Reader close" })
   end
 
   if state.buffers and state.buffers.toc and vim.api.nvim_buf_is_valid(state.buffers.toc) then
     vim.keymap.set("n", "<CR>", function()
       require("code_reader").activate()
     end, { buffer = state.buffers.toc, silent = true, desc = "Code Reader activate TOC step" })
+
+    vim.keymap.set("n", "q", function()
+      require("code_reader").close()
+    end, { buffer = state.buffers.toc, silent = true, desc = "Code Reader close" })
   end
+end
+
+local function valid_win(win)
+  return win and vim.api.nvim_win_is_valid(win)
+end
+
+local function valid_buf(buf)
+  return buf and vim.api.nvim_buf_is_valid(buf)
 end
 
 function M.setup(opts)
@@ -111,7 +127,8 @@ function M.open(path)
   ui.render(state)
 end
 
-function M.goto_step(index)
+function M.goto_step(index, opts)
+  opts = opts or {}
   if not state.doc then
     vim.notify("Code Reader: no explanation is open", vim.log.levels.WARN)
     return
@@ -120,6 +137,10 @@ function M.goto_step(index)
   state.current = clamp_step(tonumber(index) or state.current)
   symbols.clear()
   ui.render(state)
+  ui.reset_explanation_view(state)
+  if opts.keep_focus and valid_win(opts.keep_focus) then
+    vim.api.nvim_set_current_win(opts.keep_focus)
+  end
 end
 
 function M.next()
@@ -149,23 +170,48 @@ function M.open_source()
   vim.cmd("edit " .. vim.fn.fnameescape(path))
 end
 
+function M.close()
+  symbols.clear()
+  ui.clear_source_highlights(state)
+
+  local windows = state.windows or {}
+  for _, name in ipairs({ "explanation", "toc" }) do
+    local win = windows[name]
+    if valid_win(win) then
+      pcall(vim.api.nvim_win_close, win, true)
+    end
+  end
+
+  local buffers = state.buffers or {}
+  for _, name in ipairs({ "explanation", "toc" }) do
+    local buf = buffers[name]
+    if valid_buf(buf) then
+      pcall(vim.api.nvim_buf_delete, buf, { force = true })
+    end
+  end
+
+  state.path = nil
+  state.root = nil
+  state.doc = nil
+  state.current = nil
+  state.toc_line_to_step = nil
+  state.windows = nil
+  state.buffers = nil
+end
+
 function M.activate()
   local buf = vim.api.nvim_get_current_buf()
   if state.buffers and buf == state.buffers.toc then
     local line = vim.api.nvim_win_get_cursor(0)[1]
     local step = state.toc_line_to_step and state.toc_line_to_step[line]
     if step then
-      M.goto_step(step)
+      M.goto_step(step, { keep_focus = buf == state.buffers.toc and vim.api.nvim_get_current_win() or nil })
     end
     return
   end
 
   local line = vim.api.nvim_get_current_line()
-  if line:match("^Previous:") then
-    M.prev()
-  elseif line:match("^Next:") then
-    M.next()
-  elseif line:match("^Source:") then
+  if line:match("^%- Source:") then
     M.open_source()
     return
   end

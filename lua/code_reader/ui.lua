@@ -55,6 +55,81 @@ local function source_ref_label(source_ref)
   return source_ref.path .. suffix
 end
 
+local function step_link(step)
+  return "[[" .. step.id .. "|" .. step.title .. "]]"
+end
+
+local function parent_step(state, step)
+  if not step or not step.id then
+    return nil
+  end
+
+  local parent_id = step.id:match("^(.+)%.%d+$")
+  if parent_id and state.doc.step_by_id then
+    local parent_index = state.doc.step_by_id[parent_id]
+    return parent_index and state.doc.steps[parent_index] or nil
+  end
+
+  local target_depth = (step.depth or 1) - 1
+  if target_depth < 1 then
+    return nil
+  end
+
+  for index = step.index - 1, 1, -1 do
+    local candidate = state.doc.steps[index]
+    if candidate.depth == target_depth then
+      return candidate
+    end
+  end
+end
+
+local function child_steps(state, step)
+  local children = {}
+  local child_depth = (step.depth or 1) + 1
+
+  for index = step.index + 1, #state.doc.steps do
+    local candidate = state.doc.steps[index]
+    if (candidate.depth or 1) <= (step.depth or 1) then
+      break
+    end
+    if candidate.depth == child_depth then
+      table.insert(children, candidate)
+    end
+  end
+
+  return children
+end
+
+local function append_navigation(lines, state, step, source_ref)
+  table.insert(lines, "")
+  table.insert(lines, "---")
+  table.insert(lines, "## Navigation")
+  table.insert(lines, "")
+
+  local previous = state.doc.steps[state.current - 1]
+  local next_step = state.doc.steps[state.current + 1]
+  local parent = parent_step(state, step)
+  local children = child_steps(state, step)
+
+  if previous then
+    table.insert(lines, "- Previous: " .. step_link(previous))
+  end
+  if next_step then
+    table.insert(lines, "- Next: " .. step_link(next_step))
+  end
+  if parent then
+    table.insert(lines, "- Parent: " .. step_link(parent))
+  end
+  if #children > 0 then
+    table.insert(lines, "- Children:")
+    for _, child in ipairs(children) do
+      table.insert(lines, "  - " .. step_link(child))
+    end
+  end
+
+  table.insert(lines, "- Source: `" .. source_ref_label(source_ref) .. "`")
+end
+
 function M.setup_highlights()
   vim.api.nvim_set_hl(0, "CodeReaderActiveLine", { bg = "#263238", default = true })
   vim.api.nvim_set_hl(0, "CodeReaderDimLine", { fg = "#6b7280", default = true })
@@ -119,14 +194,7 @@ function M.render_explanation(state)
     table.insert(lines, line)
   end
 
-  table.insert(lines, "")
-  table.insert(lines, "---")
-
-  local previous = state.doc.steps[state.current - 1]
-  local next_step = state.doc.steps[state.current + 1]
-  table.insert(lines, "Previous: " .. (previous and (previous.id .. " " .. previous.title) or "none"))
-  table.insert(lines, "Next: " .. (next_step and (next_step.id .. " " .. next_step.title) or "none"))
-  table.insert(lines, "Source: " .. source_ref_label(source_ref))
+  append_navigation(lines, state, step, source_ref)
 
   set_lines(state.buffers.explanation, lines)
 end
@@ -219,6 +287,32 @@ function M.render(state)
   M.render_explanation(state)
   M.render_toc(state)
   M.render_source(state)
+end
+
+function M.reset_explanation_view(state)
+  if not valid_win(state.windows and state.windows.explanation) then
+    return
+  end
+
+  local previous_win = vim.api.nvim_get_current_win()
+  vim.api.nvim_set_current_win(state.windows.explanation)
+  vim.api.nvim_win_set_cursor(state.windows.explanation, { 1, 0 })
+  vim.cmd("normal! zt")
+  if valid_win(previous_win) then
+    vim.api.nvim_set_current_win(previous_win)
+  end
+end
+
+function M.clear_source_highlights(state)
+  local code_win = state.windows and state.windows.code
+  if not valid_win(code_win) then
+    return
+  end
+
+  local buf = vim.api.nvim_win_get_buf(code_win)
+  if valid_buf(buf) then
+    vim.api.nvim_buf_clear_namespace(buf, namespace, 0, -1)
+  end
 end
 
 return M

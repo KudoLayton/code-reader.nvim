@@ -35,3 +35,9 @@ vim.api.nvim_create_user_command("CodeReaderToggleFocus", function()
 end, {
   desc = "Toggle Code Reader dimming for unrelated source lines",
 })
+
+vim.api.nvim_create_user_command("CodeReaderClose", function()
+  require("code_reader").close()
+end, {
+  desc = "Close Code Reader views",
+})
