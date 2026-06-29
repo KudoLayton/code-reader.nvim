@@ -34,6 +34,24 @@ local function has_syntax_highlight(buf, line_text, language)
   return false
 end
 
+local function has_highlight(buf, line_text, group)
+  local lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
+  for index, line in ipairs(lines) do
+    if line:find(line_text, 1, true) then
+      local marks = vim.api.nvim_buf_get_extmarks(buf, -1, { index - 1, 0 }, { index - 1, -1 }, {
+        details = true,
+      })
+      for _, mark in ipairs(marks) do
+        local details = mark[4] or {}
+        if details.hl_group == group then
+          return true
+        end
+      end
+    end
+  end
+  return false
+end
+
 local tmp = vim.fn.tempname()
 vim.fn.mkdir(tmp .. "/.code_reader", "p")
 vim.fn.mkdir(tmp .. "/src", "p")
@@ -85,6 +103,8 @@ vim.fn.writefile({
   "local enabled = true",
   "return enabled",
   "```",
+  "",
+  "[run](<treesitter://src/app.lua?query=(identifier) @code_reader.symbol>)",
   "",
   "``` mermaid",
   "flowchart TD",
@@ -142,6 +162,7 @@ eq(front_page:find("## Table of Contents", 1, true) ~= nil, true, "front page to
 eq(front_page:find("- [[1|Module setup]]", 1, true) ~= nil, true, "front page toc root")
 eq(front_page:find("  - [[1.1|Run function]]", 1, true) ~= nil, true, "front page toc child")
 eq(front_page:find("    - [[1.1.1|Return value]]", 1, true) ~= nil, true, "front page toc grandchild")
+eq(has_highlight(vim.api.nvim_win_get_buf(state.windows.code), "[[1|Module setup]]", "CodeReaderStepLink"), true, "front page step link highlighted")
 
 code_reader.next()
 eq(state.current, 2, "next step")
@@ -149,6 +170,7 @@ eq(vim.api.nvim_buf_get_lines(state.buffers.explanation, 0, 1, false)[1], "# 1 M
 local rendered_explanation = table.concat(vim.api.nvim_buf_get_lines(state.buffers.explanation, 0, -1, false), "\n")
 eq(rendered_explanation:find("rendered mermaid diagram", 1, true) ~= nil, true, "explanation mermaid rendered")
 eq(has_syntax_highlight(state.buffers.explanation, "local enabled = true", "lua"), true, "explanation code block syntax highlighted")
+eq(has_highlight(state.buffers.explanation, "treesitter://src/app.lua", "CodeReaderSymbolLink"), true, "symbol link highlighted")
 eq(vim.api.nvim_buf_get_name(vim.api.nvim_win_get_buf(state.windows.code)), source_file, "next step opens source")
 eq(#render_markdown_calls > 0, true, "render-markdown integration called")
 eq(render_markdown_calls[#render_markdown_calls].buf, state.buffers.explanation, "render-markdown explanation buffer")
@@ -176,6 +198,8 @@ eq(joined:find("- Parent: [[1|Module setup]] (↑1)", 1, true) ~= nil, true, "pa
 eq(joined:find("- Children:", 1, true) ~= nil, true, "children navigation list")
 eq(joined:find("  - [[1.1.1|Return value]] (↗ src/response.lua#L2-L4)", 1, true) ~= nil, true, "child navigation link")
 eq(joined:find("- Source: `src/app.lua#L2-L4`", 1, true) ~= nil, true, "source navigation link")
+eq(has_highlight(state.buffers.explanation, "Source: src/app.lua#L2-L4", "CodeReaderSourceTarget"), true, "source header highlighted")
+eq(has_highlight(state.buffers.explanation, "- Source: `src/app.lua#L2-L4`", "CodeReaderSourceTarget"), true, "source navigation highlighted")
 
 local code_win = state.windows.code
 local explanation_win = state.windows.explanation

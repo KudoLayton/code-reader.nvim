@@ -47,6 +47,24 @@ local function has_syntax_highlight(buf, line_text, language)
   return false
 end
 
+local function has_highlight(buf, line_text, group)
+  local lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
+  for index, line in ipairs(lines) do
+    if line:find(line_text, 1, true) then
+      local marks = vim.api.nvim_buf_get_extmarks(buf, -1, { index - 1, 0 }, { index - 1, -1 }, {
+        details = true,
+      })
+      for _, mark in ipairs(marks) do
+        local details = mark[4] or {}
+        if details.hl_group == group then
+          return true
+        end
+      end
+    end
+  end
+  return false
+end
+
 local tmp = vim.fn.tempname()
 vim.fn.mkdir(tmp .. "/.code_reader/diffs", "p")
 vim.fn.mkdir(tmp .. "/src", "p")
@@ -127,6 +145,7 @@ local front_page = table.concat(vim.api.nvim_buf_get_lines(vim.api.nvim_win_get_
 contains(front_page, "## Diff Coverage", "coverage heading")
 contains(front_page, "Explained changes: 5 / 5 (100.0%)", "coverage ratio")
 contains(front_page, "Explained hunks: 2 / 2", "hunk coverage")
+eq(has_highlight(vim.api.nvim_win_get_buf(state.windows.code), "[[1|Toggle flag]]", "CodeReaderStepLink"), true, "diff front page step link highlighted")
 
 code_reader.next()
 local explanation = table.concat(vim.api.nvim_buf_get_lines(state.buffers.explanation, 0, -1, false), "\n")
@@ -137,6 +156,9 @@ contains(explanation, "Before: `src/app.lua#L1-L4`", "before range")
 contains(explanation, "After: `src/app.lua#L1-L5`", "after range")
 contains(explanation, "- Next: [[2|Rename value]] (↓8 src/app.lua#H2)", "diff next navigation position")
 contains(explanation, "- Diff: `src/app.lua#H1`", "diff navigation source")
+eq(has_highlight(state.buffers.explanation, "Diff: src/app.lua#H1", "CodeReaderDiffTarget"), true, "diff header highlighted")
+eq(has_highlight(state.buffers.explanation, "- Diff: `src/app.lua#H1`", "CodeReaderDiffTarget"), true, "diff navigation highlighted")
+eq(has_highlight(state.buffers.explanation, "[[2|Rename value]]", "CodeReaderStepLink"), true, "diff navigation step link highlighted")
 
 local before_text = table.concat(vim.api.nvim_buf_get_lines(vim.api.nvim_win_get_buf(state.windows.code), 0, -1, false), "\n")
 local after_text = table.concat(vim.api.nvim_buf_get_lines(vim.api.nvim_win_get_buf(state.windows.diff_after), 0, -1, false), "\n")

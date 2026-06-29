@@ -7,6 +7,7 @@ local syntax = require("code_reader.syntax")
 local M = {}
 
 local namespace = vim.api.nvim_create_namespace("code-reader")
+local link_namespace = vim.api.nvim_create_namespace("code-reader-links")
 
 local function set_lines(buf, lines)
   vim.api.nvim_set_option_value("modifiable", true, { buf = buf })
@@ -32,11 +33,71 @@ local function render_markdown_lines(text, state)
   return mermaid.render_lines(split_lines(text), state.options and state.options.mermaid or {})
 end
 
+local function add_range_highlight(buf, line_index, start_col, end_col, group)
+  if start_col and end_col and end_col > start_col then
+    vim.api.nvim_buf_set_extmark(buf, link_namespace, line_index, start_col, {
+      end_col = end_col,
+      hl_group = group,
+      priority = 120,
+    })
+  end
+end
+
+local function add_pattern_highlights(buf, line_index, line, pattern, group)
+  local cursor = 1
+  while cursor <= #line do
+    local start_index, end_index = line:find(pattern, cursor)
+    if not start_index then
+      break
+    end
+    add_range_highlight(buf, line_index, start_index - 1, end_index, group)
+    cursor = end_index + 1
+  end
+end
+
+local function add_target_highlight(buf, line_index, line, label, group)
+  local label_start, label_end = line:find(label .. ":%s*")
+  if not label_start then
+    return
+  end
+
+  local target_start = label_end + 1
+  local target_end = nil
+  if line:sub(target_start, target_start) == "`" then
+    target_start = target_start + 1
+    target_end = line:find("`", target_start, true)
+    target_end = target_end and target_end - 1 or #line
+  else
+    target_end = line:find("%s", target_start)
+    target_end = target_end and target_end - 1 or #line
+  end
+
+  add_range_highlight(buf, line_index, target_start - 1, target_end, group)
+end
+
+local function highlight_code_reader_links(buf)
+  if not (buf and vim.api.nvim_buf_is_valid(buf)) then
+    return
+  end
+
+  vim.api.nvim_buf_clear_namespace(buf, link_namespace, 0, -1)
+
+  local lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
+  for index, line in ipairs(lines) do
+    local line_index = index - 1
+    add_pattern_highlights(buf, line_index, line, "%[%[[^%]]-%]%]", "CodeReaderStepLink")
+    add_pattern_highlights(buf, line_index, line, "%[[^%]]-%]%(<treesitter://.-%>%)", "CodeReaderSymbolLink")
+    add_target_highlight(buf, line_index, line, "Source", "CodeReaderSourceTarget")
+    add_target_highlight(buf, line_index, line, "Diff", "CodeReaderDiffTarget")
+  end
+end
+
 local function render_markdown_buffer(buf, win)
   syntax.highlight_markdown(buf)
 
   local ok, render_markdown = pcall(require, "render-markdown")
   if not ok or type(render_markdown.render) ~= "function" then
+    highlight_code_reader_links(buf)
     return
   end
 
@@ -55,6 +116,8 @@ local function render_markdown_buffer(buf, win)
       },
     },
   })
+
+  highlight_code_reader_links(buf)
 end
 
 local function create_scratch(name, filetype)
@@ -478,6 +541,10 @@ function M.setup_highlights()
   vim.api.nvim_set_hl(0, "CodeReaderDiffMove", { bg = "#23324a", default = true })
   vim.api.nvim_set_hl(0, "CodeReaderDiffFiller", { fg = "#4b5563", default = true })
   vim.api.nvim_set_hl(0, "CodeReaderDiffWord", { bg = "#6b4f1d", bold = true, default = true })
+  vim.api.nvim_set_hl(0, "CodeReaderStepLink", { fg = "#93c5fd", underline = true, default = true })
+  vim.api.nvim_set_hl(0, "CodeReaderSymbolLink", { fg = "#c4b5fd", underline = true, default = true })
+  vim.api.nvim_set_hl(0, "CodeReaderSourceTarget", { fg = "#86efac", bold = true, default = true })
+  vim.api.nvim_set_hl(0, "CodeReaderDiffTarget", { fg = "#fca5a5", bold = true, default = true })
 end
 
 function M.open_layout(state)
