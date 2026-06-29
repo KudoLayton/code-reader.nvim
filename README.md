@@ -33,6 +33,37 @@ Explain the nested call-stack detail here.
 - GitHub-style `path#Lx` and `path#Lx-Ly` references define the source range.
 - Optional source hashes can be appended as `path#Lx-Ly@sha256:<hash>`.
 
+## Installation
+
+Using Neovim's built-in package manager:
+
+```lua
+vim.pack.add({
+  {
+    src = "git@github.com:KudoLayton/code-reader.nvim.git",
+    name = "code-reader.nvim",
+  },
+}, {
+  load = true,
+})
+```
+
+Using lazy.nvim:
+
+```lua
+{
+  url = "git@github.com:KudoLayton/code-reader.nvim.git",
+  name = "code-reader.nvim",
+  cmd = {
+    "CodeReaderOpen",
+    "CodeReaderNext",
+    "CodeReaderPrev",
+    "CodeReaderGoto",
+    "CodeReaderToggleFocus",
+  },
+}
+```
+
 ## Usage
 
 Install this repository as a Neovim plugin, then open an explanation file:
