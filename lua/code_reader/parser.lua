@@ -1,5 +1,7 @@
 local M = {}
 
+local FRONT_PAGE_MARKER = "<!-- code-reader: front-page -->"
+
 local function trim(value)
   return (value:gsub("^%s+", ""):gsub("%s+$", ""))
 end
@@ -197,11 +199,38 @@ local function section_content(lines, heading_index)
   return table.concat(content, "\n"):gsub("^%s*\n", ""):gsub("\n%s*$", "")
 end
 
+local function first_non_empty_index(lines)
+  for index, line in ipairs(lines) do
+    if trim(line) ~= "" then
+      return index
+    end
+  end
+end
+
+local function without_line(lines, remove_index)
+  local result = {}
+  for index, line in ipairs(lines) do
+    if index ~= remove_index then
+      table.insert(result, line)
+    end
+  end
+  return result
+end
+
 local function parse_step(lines, index)
-  local heading = parse_heading(lines)
+  local marker_index = index == 1 and first_non_empty_index(lines) or nil
+  local is_front_page = marker_index and trim(lines[marker_index]) == FRONT_PAGE_MARKER
+  local step_lines = is_front_page and without_line(lines, marker_index) or lines
+  local heading = parse_heading(step_lines)
   local id = heading and heading.id or tostring(index)
   local title = heading and heading.title or ("Step " .. tostring(index))
   local depth = heading and heading.level or count_numeric_depth(id)
+
+  if is_front_page then
+    id = "front"
+    title = heading and heading.title or "Front Page"
+    depth = heading and heading.level or 1
+  end
 
   if not id or id == "" then
     id = tostring(index)
@@ -209,12 +238,13 @@ local function parse_step(lines, index)
 
   return {
     index = index,
+    kind = is_front_page and "front_page" or "step",
     id = id,
     title = title,
     depth = depth,
-    body = table.concat(lines, "\n"),
-    content = section_content(lines, heading and heading.index),
-    sources = parse_sources(lines),
+    body = table.concat(step_lines, "\n"),
+    content = section_content(step_lines, heading and heading.index),
+    sources = parse_sources(step_lines),
   }
 end
 
@@ -225,11 +255,15 @@ function M.parse(text, opts)
   local sections = split_sections(lines, start_index)
   local steps = {}
   local step_by_id = {}
+  local front_page_index = nil
 
   for index, section in ipairs(sections) do
     local step = parse_step(section, index)
     table.insert(steps, step)
     step_by_id[step.id] = index
+    if step.kind == "front_page" then
+      front_page_index = index
+    end
   end
 
   return {
@@ -237,6 +271,7 @@ function M.parse(text, opts)
     frontmatter = frontmatter,
     steps = steps,
     step_by_id = step_by_id,
+    front_page_index = front_page_index,
   }
 end
 
