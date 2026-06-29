@@ -1,7 +1,7 @@
 local M = {}
 
 M.namespace = vim.api.nvim_create_namespace("code-reader-syntax")
-M.priority = 100
+M.priority = 199
 
 local extension_filetypes = {
   c = "c",

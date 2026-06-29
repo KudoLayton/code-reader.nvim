@@ -34,6 +34,32 @@ local function has_syntax_highlight(buf, line_text, language)
   return false
 end
 
+local function has_syntax_at_text_start(buf, line_text, language)
+  local lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
+  for index, line in ipairs(lines) do
+    local start_index = line:find(line_text, 1, true)
+    if start_index then
+      local start_col = start_index - 1
+      local marks = vim.api.nvim_buf_get_extmarks(buf, -1, { index - 1, start_col }, { index - 1, start_col + 1 }, {
+        details = true,
+      })
+      for _, mark in ipairs(marks) do
+        local details = mark[4] or {}
+        if
+          mark[3] <= start_col
+          and (details.end_col or start_col) > start_col
+          and details.hl_group
+          and details.hl_group:match("^@.*%." .. language .. "$")
+          and (details.priority or 0) > 100
+        then
+          return true
+        end
+      end
+    end
+  end
+  return false
+end
+
 local function has_highlight(buf, line_text, group)
   local lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
   for index, line in ipairs(lines) do
@@ -170,6 +196,7 @@ eq(vim.api.nvim_buf_get_lines(state.buffers.explanation, 0, 1, false)[1], "# 1 M
 local rendered_explanation = table.concat(vim.api.nvim_buf_get_lines(state.buffers.explanation, 0, -1, false), "\n")
 eq(rendered_explanation:find("rendered mermaid diagram", 1, true) ~= nil, true, "explanation mermaid rendered")
 eq(has_syntax_highlight(state.buffers.explanation, "local enabled = true", "lua"), true, "explanation code block syntax highlighted")
+eq(has_syntax_at_text_start(state.buffers.explanation, "local enabled = true", "lua"), true, "explanation code block first character highlighted")
 eq(has_highlight(state.buffers.explanation, "treesitter://src/app.lua", "CodeReaderSymbolLink"), true, "symbol link highlighted")
 eq(vim.api.nvim_buf_get_name(vim.api.nvim_win_get_buf(state.windows.code)), source_file, "next step opens source")
 eq(#render_markdown_calls > 0, true, "render-markdown integration called")

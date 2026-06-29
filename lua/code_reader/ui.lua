@@ -297,6 +297,7 @@ local function apply_diff_cell_highlight(buf, line_index, cell, gutter_width, in
         vim.api.nvim_buf_set_extmark(buf, namespace, line_index, gutter_width + span.start_col, {
           end_col = gutter_width + span.end_col,
           hl_group = "CodeReaderDiffWord",
+          priority = 210,
         })
       end
     end

@@ -47,6 +47,32 @@ local function has_syntax_highlight(buf, line_text, language)
   return false
 end
 
+local function has_syntax_at_text_start(buf, line_text, language)
+  local lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
+  for index, line in ipairs(lines) do
+    local start_index = line:find(line_text, 1, true)
+    if start_index then
+      local start_col = start_index - 1
+      local marks = vim.api.nvim_buf_get_extmarks(buf, -1, { index - 1, start_col }, { index - 1, start_col + 1 }, {
+        details = true,
+      })
+      for _, mark in ipairs(marks) do
+        local details = mark[4] or {}
+        if
+          mark[3] <= start_col
+          and (details.end_col or start_col) > start_col
+          and details.hl_group
+          and details.hl_group:match("^@.*%." .. language .. "$")
+          and (details.priority or 0) > 100
+        then
+          return true
+        end
+      end
+    end
+  end
+  return false
+end
+
 local function has_highlight(buf, line_text, group)
   local lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
   for index, line in ipairs(lines) do
@@ -174,6 +200,8 @@ eq(has_line_highlight(vim.api.nvim_win_get_buf(state.windows.code), "function M.
 eq(has_line_highlight(vim.api.nvim_win_get_buf(state.windows.code), "local enabled = false", "CodeReaderDiffModify"), true, "focused modified remains highlighted")
 eq(has_syntax_highlight(vim.api.nvim_win_get_buf(state.windows.code), "local enabled = false", "lua"), true, "before diff syntax highlighted")
 eq(has_syntax_highlight(vim.api.nvim_win_get_buf(state.windows.diff_after), "local enabled = true", "lua"), true, "after diff syntax highlighted")
+eq(has_syntax_at_text_start(vim.api.nvim_win_get_buf(state.windows.code), "local enabled = false", "lua"), true, "before diff first character highlighted")
+eq(has_syntax_at_text_start(vim.api.nvim_win_get_buf(state.windows.diff_after), "local enabled = true", "lua"), true, "after diff first character highlighted")
 
 code_reader.toggle_focus()
 eq(has_line_highlight(vim.api.nvim_win_get_buf(state.windows.code), 'return "old"', "CodeReaderDimLine"), false, "focus toggle removes diff dimming")
