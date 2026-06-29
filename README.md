@@ -26,6 +26,12 @@ Explain the top-level flow here. Continue at [[1.1|Parse request]].
 
 [server symbol](<treesitter://src/server.lua?query=(identifier) @code_reader.symbol>)
 
+```mermaid
+flowchart TD
+  Request --> Parse
+  Parse --> Render
+```
+
 ---
 ## 1.1. Parse request
 
@@ -44,6 +50,7 @@ Explain the nested call-stack detail here.
 - Optional source hashes can be appended as `path#Lx-Ly@sha256:<hash>`.
 - Obsidian-style `[[step-id]]` and `[[step-id|label]]` links jump to another step in the same explanation file.
 - Markdown links that start with `treesitter://` highlight symbols in the named source file.
+- Fenced code blocks marked as `mermaid` are rendered as text diagrams when Mermaid support is available.
 
 Symbol links must always name the source path:
 
@@ -105,6 +112,36 @@ Inside the explanation panel, `[r` and `]r` move between steps. Press `<CR>` on 
 
 In the TOC panel, press `<CR>` to jump to the selected step. The explanation view and code view update together while focus stays in the TOC. Press `<CR>` on an internal step link or a `treesitter://` symbol link in the explanation panel to activate it.
 
+## Mermaid
+
+Mermaid rendering is enabled by default. Code Reader uses a small Node helper backed by `beautiful-mermaid` to render `mermaid` fenced code blocks as text diagrams. Install the npm dependency from the plugin root:
+
+```powershell
+npm install
+```
+
+With lazy.nvim, the install step can be attached as a build hook:
+
+```lua
+{
+  url = "git@github.com:KudoLayton/code-reader.nvim.git",
+  name = "code-reader.nvim",
+  build = "npm install",
+}
+```
+
+If Node, npm, or `beautiful-mermaid` is missing, Code Reader keeps the original Mermaid code block visible. To disable this feature:
+
+```lua
+require("code_reader").setup({
+  mermaid = {
+    enabled = false,
+  },
+})
+```
+
+Run `:checkhealth code_reader` to inspect Node, npm, the Mermaid helper script, and the installed dependency.
+
 ## Demo
 
 This repository includes an inert demo project under `demo/basic`. The demo files are shipped with the plugin, but they are not in Neovim auto-load directories and do not affect startup or runtime behavior unless opened explicitly.
@@ -123,6 +160,8 @@ nvim .
 ```powershell
 lua tests/parser_spec.lua
 lua tests/links_spec.lua
+nvim --headless -u NONE -l tests/mermaid_spec.lua
+nvim --headless -u NONE -l tests/health_spec.lua
 nvim --headless -u NONE -l tests/nvim_spec.lua
 nvim --headless -u NONE -l tests/open_spec.lua
 nvim --headless -u NONE -l tests/symbol_spec.lua

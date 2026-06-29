@@ -12,6 +12,14 @@ The main flow starts in `app.handle`, which builds request context and coordinat
 
 Read this walkthrough as a map of the program shape: first the top-level lifecycle, then the parse and validation steps, then the two response paths that finish the request.
 
+```mermaid
+flowchart TD
+  Handle[app.handle] --> Parse[parse_request]
+  Parse --> Validate[validate_request]
+  Validate --> Success[render_response]
+  Validate --> Error[render_error]
+```
+
 ---
 # 1. Request lifecycle
 
