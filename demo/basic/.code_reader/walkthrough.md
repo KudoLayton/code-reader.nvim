@@ -14,10 +14,10 @@ Read this walkthrough as a map of the program shape: first the top-level lifecyc
 
 ```mermaid
 flowchart TD
-  Handle["1. Request lifecycle<br/>app.handle"] --> Parse["1.1 Parse request<br/>parse_request"]
-  Parse --> Validate["1.2 Validate request<br/>validate_request"]
-  Validate --> Success["1.3 Render response<br/>render_response"]
-  Validate --> Error["2. Error path<br/>render_error"]
+  Handle["app.handle<br/>1. Request lifecycle"] --> Parse["parse_request<br/>1.1 Parse request"]
+  Parse --> Validate["validate_request<br/>1.2 Validate request"]
+  Validate --> Success["render_response<br/>1.3 Render response"]
+  Validate --> Error["render_error<br/>2. Error path"]
 ```
 
 ---
