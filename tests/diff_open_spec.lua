@@ -11,6 +11,24 @@ local function contains(text, needle, label)
   eq(text:find(needle, 1, true) ~= nil, true, label)
 end
 
+local function has_line_highlight(buf, line_text, group)
+  local lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
+  for index, line in ipairs(lines) do
+    if line:find(line_text, 1, true) then
+      local marks = vim.api.nvim_buf_get_extmarks(buf, -1, { index - 1, 0 }, { index - 1, -1 }, {
+        details = true,
+      })
+      for _, mark in ipairs(marks) do
+        local details = mark[4] or {}
+        if details.line_hl_group == group or details.hl_group == group then
+          return true
+        end
+      end
+    end
+  end
+  return false
+end
+
 local tmp = vim.fn.tempname()
 vim.fn.mkdir(tmp .. "/.code_reader/diffs", "p")
 vim.fn.mkdir(tmp .. "/src", "p")
@@ -24,6 +42,12 @@ vim.fn.writefile({
   "local enabled = false",
   "",
   "return M",
+  "",
+  "",
+  "",
+  "function M.name()",
+  "  return \"old\"",
+  "end",
 }, source_file)
 
 vim.fn.writefile({
@@ -38,6 +62,11 @@ vim.fn.writefile({
   "+local mode = \"fast\"",
   " ",
   " return M",
+  "@@ -8,3 +9,3 @@",
+  " function M.name()",
+  "-  return \"old\"",
+  "+  return \"new\"",
+  " end",
 }, diff_file)
 
 vim.fn.writefile({
@@ -58,6 +87,13 @@ vim.fn.writefile({
   "Diff: `src/app.lua#H1`",
   "",
   "The flag becomes enabled.",
+  "",
+  "---",
+  "# 2. Rename value",
+  "",
+  "Diff: `src/app.lua#H2`",
+  "",
+  "The name result changes.",
 }, explanation_file)
 
 vim.cmd("edit " .. vim.fn.fnameescape(source_file))
@@ -71,8 +107,8 @@ eq(vim.api.nvim_win_is_valid(state.windows.diff_after), true, "diff after window
 
 local front_page = table.concat(vim.api.nvim_buf_get_lines(vim.api.nvim_win_get_buf(state.windows.code), 0, -1, false), "\n")
 contains(front_page, "## Diff Coverage", "coverage heading")
-contains(front_page, "Explained changes: 3 / 3 (100.0%)", "coverage ratio")
-contains(front_page, "Explained hunks: 1 / 1", "hunk coverage")
+contains(front_page, "Explained changes: 5 / 5 (100.0%)", "coverage ratio")
+contains(front_page, "Explained hunks: 2 / 2", "hunk coverage")
 
 code_reader.next()
 local explanation = table.concat(vim.api.nvim_buf_get_lines(state.buffers.explanation, 0, -1, false), "\n")
@@ -90,6 +126,14 @@ contains(after_text, "local mode = \"fast\"", "after added content")
 contains(before_text, "~ local enabled = false", "before modified marker")
 contains(after_text, "~ local enabled = true", "after modified marker")
 contains(after_text, "+ local mode = \"fast\"", "after added marker")
+eq(has_line_highlight(vim.api.nvim_win_get_buf(state.windows.code), 'return "old"', "CodeReaderDimLine"), true, "unrelated hunk dimmed")
+eq(has_line_highlight(vim.api.nvim_win_get_buf(state.windows.code), "local M = {}", "CodeReaderActiveLine"), true, "focused context active")
+eq(has_line_highlight(vim.api.nvim_win_get_buf(state.windows.code), "function M.name()", "CodeReaderDimLine"), true, "unrelated context dimmed")
+eq(has_line_highlight(vim.api.nvim_win_get_buf(state.windows.code), "local enabled = false", "CodeReaderDiffModify"), true, "focused modified remains highlighted")
+
+code_reader.toggle_focus()
+eq(has_line_highlight(vim.api.nvim_win_get_buf(state.windows.code), 'return "old"', "CodeReaderDimLine"), false, "focus toggle removes diff dimming")
+code_reader.toggle_focus()
 
 local before_marks = vim.api.nvim_buf_get_extmarks(vim.api.nvim_win_get_buf(state.windows.code), -1, 0, -1, {
   details = true,
@@ -110,6 +154,12 @@ vim.fn.writefile({
   "local mode = \"fast\"",
   "",
   "return M",
+  "",
+  "",
+  "",
+  "function M.name()",
+  "  return \"new\"",
+  "end",
 }, source_file)
 code_reader.goto_step(2)
 local applied_explanation = table.concat(vim.api.nvim_buf_get_lines(state.buffers.explanation, 0, -1, false), "\n")

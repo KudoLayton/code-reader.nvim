@@ -84,6 +84,7 @@ Open the markdown file with `:CodeReaderOpen`. Code Reader parses the referenced
 - If the current source already matches the post-change context, Code Reader reconstructs the before version in memory and still shows full-file before/after buffers.
 - If the hunk context is stale or only partially matches, Code Reader falls back to a patch-only side-by-side snippet.
 - Diff side-by-side views include old/new line-number gutters, `~`/`+`/`-`/`>` markers, moved-line detection, and inline highlights for modified spans.
+- Focus mode also applies to full-file diff views: unrelated rows are dimmed while the current explanation hunk stays highlighted.
 
 Symbol links must always name the source path:
 

@@ -36,3 +36,4 @@ Manual review checklist:
 - Check that the diff demo front page reports changed-line and hunk coverage.
 - Confirm the diff demo gutter shows `~`, `+`, `-`, and `>` markers.
 - Confirm modified lines have inline highlights on the changed span.
+- Toggle focus in the diff demo and confirm unrelated diff rows dim on and off.

@@ -158,7 +158,7 @@ local function diff_line_hl(kind)
   return nil
 end
 
-local function apply_diff_cell_highlight(buf, line_index, cell, gutter_width)
+local function apply_diff_cell_highlight(buf, line_index, cell, gutter_width, in_focus)
   if not cell then
     return
   end
@@ -167,6 +167,10 @@ local function apply_diff_cell_highlight(buf, line_index, cell, gutter_width)
   if line_hl then
     vim.api.nvim_buf_set_extmark(buf, namespace, line_index, 0, {
       line_hl_group = line_hl,
+    })
+  elseif in_focus and cell.kind == "context" then
+    vim.api.nvim_buf_set_extmark(buf, namespace, line_index, 0, {
+      line_hl_group = "CodeReaderActiveLine",
     })
   end
 
@@ -182,13 +186,26 @@ local function apply_diff_cell_highlight(buf, line_index, cell, gutter_width)
   end
 end
 
-local function apply_diff_highlights(model, before_buf, after_buf)
+local function apply_diff_highlights(model, before_buf, after_buf, state)
   vim.api.nvim_buf_clear_namespace(before_buf, namespace, 0, -1)
   vim.api.nvim_buf_clear_namespace(after_buf, namespace, 0, -1)
 
+  local row_count = #(model.rows or {})
+  local should_dim = state
+    and state.focus
+    and row_count <= (state.options.max_dim_lines or 5000)
+    and model.focus_start
+    and model.focus_end
+    and row_count > (model.focus_end - model.focus_start + 1)
+
   for index, row in ipairs(model.rows or {}) do
-    apply_diff_cell_highlight(before_buf, index - 1, row.before, model.gutter_width or 0)
-    apply_diff_cell_highlight(after_buf, index - 1, row.after, model.gutter_width or 0)
+    local in_focus = index >= (model.focus_start or 1) and index <= (model.focus_end or row_count)
+    apply_diff_cell_highlight(before_buf, index - 1, row.before, model.gutter_width or 0, in_focus)
+    apply_diff_cell_highlight(after_buf, index - 1, row.after, model.gutter_width or 0, in_focus)
+    if should_dim and not in_focus then
+      vim.api.nvim_buf_add_highlight(before_buf, namespace, "CodeReaderDimLine", index - 1, 0, -1)
+      vim.api.nvim_buf_add_highlight(after_buf, namespace, "CodeReaderDimLine", index - 1, 0, -1)
+    end
   end
 end
 
@@ -636,7 +653,7 @@ function M.render_source(state)
     vim.api.nvim_win_set_cursor(state.windows.code, { cursor_line, 0 })
     vim.api.nvim_win_set_cursor(state.windows.diff_after, { cursor_line, 0 })
 
-    apply_diff_highlights(model, state.buffers.diff_before, state.buffers.diff_after)
+    apply_diff_highlights(model, state.buffers.diff_before, state.buffers.diff_after, state)
     return
   end
 
