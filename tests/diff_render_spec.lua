@@ -35,7 +35,7 @@ index 1111111..2222222 100644
  }
  
 -local obsolete = true
-+local created = true
++table.insert(events, "created")
 -local status = status_line(200)
 +local status = status_line(201)
  
@@ -73,7 +73,7 @@ for _, row in ipairs(model.rows) do
   if row.before and row.before.text == "local obsolete = true" then
     pure_delete = row.before
   end
-  if row.after and row.after.text == "local created = true" then
+  if row.after and row.after.text == 'table.insert(events, "created")' then
     pure_add = row.after
   end
 end
@@ -99,7 +99,7 @@ local before_text = table.concat(model.before_lines, "\n")
 local after_text = table.concat(model.after_lines, "\n")
 ok(before_text:find("%s*>%s+\"parse\",") ~= nil, "before gutter moved marker")
 ok(before_text:find("%s*~%s+local status = status_line%(200%)") ~= nil, "before gutter modified marker")
-ok(after_text:find("%s*%+%s+local created = true") ~= nil, "after gutter add marker")
+ok(after_text:find('%s*%+%s+table.insert%(events, "created"%)') ~= nil, "after gutter add marker")
 
 local indentation_sample = [[
 diff --git a/src/indent.lua b/src/indent.lua

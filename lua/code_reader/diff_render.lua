@@ -167,18 +167,34 @@ local function similarity(old_line, new_line)
   end
   local old_tokens = word_tokens(normalize_moved_line(old_line))
   local new_tokens = word_tokens(normalize_moved_line(new_line))
-  if #old_tokens == 0 and #new_tokens == 0 then
-    return 1
-  end
-  local changed_old, changed_new = changed_token_indices(old_tokens, new_tokens)
-  local unchanged = 0
-  for index = 1, #old_tokens do
-    if not changed_old[index] and old_tokens[index]:match("%S") then
-      unchanged = unchanged + 1
+  local old_counts = {}
+  local old_count = 0
+  local new_count = 0
+
+  for _, token in ipairs(old_tokens) do
+    if token:match("%S") then
+      old_counts[token] = (old_counts[token] or 0) + 1
+      old_count = old_count + 1
     end
   end
-  local denominator = math.max(#old_tokens, #new_tokens)
-  return denominator > 0 and unchanged / denominator or 0
+
+  local common = 0
+  for _, token in ipairs(new_tokens) do
+    if token:match("%S") then
+      new_count = new_count + 1
+      if old_counts[token] and old_counts[token] > 0 then
+        old_counts[token] = old_counts[token] - 1
+        common = common + 1
+      end
+    end
+  end
+
+  if old_count == 0 and new_count == 0 then
+    return 1
+  end
+
+  local denominator = math.max(old_count, new_count)
+  return denominator > 0 and common / denominator or 0
 end
 
 local function line_counts(hunk)
@@ -332,7 +348,7 @@ local function format_rows(rows, width)
   return before_lines, after_lines
 end
 
-function M.render_hunk(hunk)
+local function render_hunk_rows(hunk)
   line_counts(hunk)
   local rows = {}
   local summary = {
@@ -371,13 +387,91 @@ function M.render_hunk(hunk)
     end
   end
 
-  local width = max_line_width(hunk)
-  local before_lines, after_lines = format_rows(rows, width)
   return {
     rows = rows,
-    before_lines = before_lines,
-    after_lines = after_lines,
     summary = summary,
+  }
+end
+
+function M.render_hunk(hunk, opts)
+  opts = opts or {}
+  local model = render_hunk_rows(hunk)
+  local width = opts.width or max_line_width(hunk)
+  local before_lines, after_lines = format_rows(model.rows, width)
+  model.before_lines = before_lines
+  model.after_lines = after_lines
+  model.gutter_width = width + 3
+  model.focus_start = 1
+  model.focus_end = #model.rows
+  return model
+end
+
+local function append_unchanged_rows(rows, before_lines, after_lines, old_cursor, new_cursor, old_stop, new_stop)
+  while old_cursor < old_stop and new_cursor < new_stop do
+    table.insert(rows, {
+      before = make_cell("before", old_cursor, "", "context", before_lines[old_cursor] or ""),
+      after = make_cell("after", new_cursor, "", "context", after_lines[new_cursor] or ""),
+    })
+    old_cursor = old_cursor + 1
+    new_cursor = new_cursor + 1
+  end
+  return old_cursor, new_cursor
+end
+
+local function append_remaining_rows(rows, before_lines, after_lines, old_cursor, new_cursor)
+  while old_cursor <= #before_lines or new_cursor <= #after_lines do
+    local before = old_cursor <= #before_lines
+        and make_cell("before", old_cursor, "", "context", before_lines[old_cursor] or "")
+      or make_blank("before")
+    local after = new_cursor <= #after_lines
+        and make_cell("after", new_cursor, "", "context", after_lines[new_cursor] or "")
+      or make_blank("after")
+    table.insert(rows, { before = before, after = after })
+    old_cursor = old_cursor + 1
+    new_cursor = new_cursor + 1
+  end
+end
+
+function M.render_file(file, before_lines, after_lines, focus_hunk)
+  local rows = {}
+  local old_cursor = 1
+  local new_cursor = 1
+  local focus_start = 1
+  local focus_end = 1
+
+  for _, hunk in ipairs(file.hunks or {}) do
+    old_cursor, new_cursor = append_unchanged_rows(
+      rows,
+      before_lines,
+      after_lines,
+      old_cursor,
+      new_cursor,
+      hunk.old_start,
+      hunk.new_start
+    )
+
+    local hunk_model = render_hunk_rows(hunk)
+    if hunk == focus_hunk then
+      focus_start = #rows + 1
+      focus_end = #rows + #hunk_model.rows
+    end
+    for _, row in ipairs(hunk_model.rows) do
+      table.insert(rows, row)
+    end
+    old_cursor = hunk.old_start + hunk.old_count
+    new_cursor = hunk.new_start + hunk.new_count
+  end
+
+  append_remaining_rows(rows, before_lines, after_lines, old_cursor, new_cursor)
+
+  local width = math.max(1, #tostring(math.max(#before_lines, #after_lines)))
+  local rendered_before, rendered_after = format_rows(rows, width)
+  return {
+    rows = rows,
+    before_lines = rendered_before,
+    after_lines = rendered_after,
+    focus_start = focus_start,
+    focus_end = focus_end,
     gutter_width = width + 3,
   }
 end

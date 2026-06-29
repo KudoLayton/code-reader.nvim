@@ -1,6 +1,7 @@
 local source = require("code_reader.source")
 local mermaid = require("code_reader.mermaid")
 local diff = require("code_reader.diff")
+local diff_render = require("code_reader.diff_render")
 
 local M = {}
 
@@ -136,6 +137,59 @@ local function diff_view_label(analysis)
     return "full file side-by-side"
   end
   return "patch-only side-by-side"
+end
+
+local function diff_line_hl(kind)
+  if kind == "deleted" then
+    return "CodeReaderDiffDelete"
+  end
+  if kind == "added" then
+    return "CodeReaderDiffAdd"
+  end
+  if kind == "modified" then
+    return "CodeReaderDiffModify"
+  end
+  if kind == "moved" then
+    return "CodeReaderDiffMove"
+  end
+  if kind == "blank" then
+    return "CodeReaderDiffFiller"
+  end
+  return nil
+end
+
+local function apply_diff_cell_highlight(buf, line_index, cell, gutter_width)
+  if not cell then
+    return
+  end
+
+  local line_hl = diff_line_hl(cell.kind)
+  if line_hl then
+    vim.api.nvim_buf_set_extmark(buf, namespace, line_index, 0, {
+      line_hl_group = line_hl,
+    })
+  end
+
+  if cell.kind == "modified" then
+    for _, span in ipairs(cell.spans or {}) do
+      if span.end_col > span.start_col then
+        vim.api.nvim_buf_set_extmark(buf, namespace, line_index, gutter_width + span.start_col, {
+          end_col = gutter_width + span.end_col,
+          hl_group = "CodeReaderDiffWord",
+        })
+      end
+    end
+  end
+end
+
+local function apply_diff_highlights(model, before_buf, after_buf)
+  vim.api.nvim_buf_clear_namespace(before_buf, namespace, 0, -1)
+  vim.api.nvim_buf_clear_namespace(after_buf, namespace, 0, -1)
+
+  for index, row in ipairs(model.rows or {}) do
+    apply_diff_cell_highlight(before_buf, index - 1, row.before, model.gutter_width or 0)
+    apply_diff_cell_highlight(after_buf, index - 1, row.after, model.gutter_width or 0)
+  end
 end
 
 local function parent_step(state, step)
@@ -336,6 +390,12 @@ function M.setup_highlights()
   vim.api.nvim_set_hl(0, "CodeReaderSymbolWrite", { bg = "#5f3b1e", default = true })
   vim.api.nvim_set_hl(0, "CodeReaderSymbolFallback", { bg = "#334155", default = true })
   vim.api.nvim_set_hl(0, "CodeReaderSymbolSeed", { underline = true, bold = true, default = true })
+  vim.api.nvim_set_hl(0, "CodeReaderDiffDelete", { bg = "#3f1f24", default = true })
+  vim.api.nvim_set_hl(0, "CodeReaderDiffAdd", { bg = "#1f3a2b", default = true })
+  vim.api.nvim_set_hl(0, "CodeReaderDiffModify", { bg = "#3a3420", default = true })
+  vim.api.nvim_set_hl(0, "CodeReaderDiffMove", { bg = "#23324a", default = true })
+  vim.api.nvim_set_hl(0, "CodeReaderDiffFiller", { fg = "#4b5563", default = true })
+  vim.api.nvim_set_hl(0, "CodeReaderDiffWord", { bg = "#6b4f1d", bold = true, default = true })
 end
 
 function M.open_layout(state)
@@ -414,6 +474,7 @@ function M.render_explanation(state)
 
     if file and hunk then
       table.insert(lines, diff.hunk_ref_label(file, hunk))
+      table.insert(lines, "Rendering: " .. diff_render.summary_label(diff_render.render_hunk(hunk).summary))
     end
     table.insert(lines, "")
 
@@ -552,53 +613,30 @@ function M.render_source(state)
     end
 
     local analysis = analyze_diff_file(state, file)
-    local before_lines = nil
-    local after_lines = nil
-    local before_cursor = hunk.old_start
-    local after_cursor = hunk.new_start
+    local model = nil
+    local cursor_line = 1
     local full_view = analysis.status == "applies" or analysis.status == "already-applied"
 
     if full_view then
-      before_lines = analysis.before_lines
-      after_lines = analysis.after_lines
+      model = diff_render.render_file(file, analysis.before_lines, analysis.after_lines, hunk)
+      cursor_line = model.focus_start or 1
     else
-      before_lines, after_lines = diff.hunk_sides(hunk)
-      before_cursor = 1
-      after_cursor = 1
+      model = diff_render.render_hunk(hunk)
+      cursor_line = 1
     end
 
-    set_lines(state.buffers.diff_before, before_lines)
-    set_lines(state.buffers.diff_after, after_lines)
+    set_lines(state.buffers.diff_before, model.before_lines)
+    set_lines(state.buffers.diff_after, model.after_lines)
     vim.api.nvim_win_set_buf(state.windows.code, state.buffers.diff_before)
     vim.api.nvim_win_set_buf(state.windows.diff_after, state.buffers.diff_after)
 
     local before_count = math.max(1, vim.api.nvim_buf_line_count(state.buffers.diff_before))
     local after_count = math.max(1, vim.api.nvim_buf_line_count(state.buffers.diff_after))
-    before_cursor = math.max(1, math.min(before_cursor, before_count))
-    after_cursor = math.max(1, math.min(after_cursor, after_count))
-    vim.api.nvim_win_set_cursor(state.windows.code, { before_cursor, 0 })
-    vim.api.nvim_win_set_cursor(state.windows.diff_after, { after_cursor, 0 })
+    cursor_line = math.max(1, math.min(cursor_line, math.min(before_count, after_count)))
+    vim.api.nvim_win_set_cursor(state.windows.code, { cursor_line, 0 })
+    vim.api.nvim_win_set_cursor(state.windows.diff_after, { cursor_line, 0 })
 
-    vim.api.nvim_buf_clear_namespace(state.buffers.diff_before, namespace, 0, -1)
-    vim.api.nvim_buf_clear_namespace(state.buffers.diff_after, namespace, 0, -1)
-    local before_start = full_view and hunk.old_start or 1
-    local before_end = full_view and hunk.old_end or #before_lines
-    local after_start = full_view and hunk.new_start or 1
-    local after_end = full_view and hunk.new_end or #after_lines
-    for line = before_start, before_end do
-      if line <= before_count then
-        vim.api.nvim_buf_set_extmark(state.buffers.diff_before, namespace, line - 1, 0, {
-          line_hl_group = "CodeReaderActiveLine",
-        })
-      end
-    end
-    for line = after_start, after_end do
-      if line <= after_count then
-        vim.api.nvim_buf_set_extmark(state.buffers.diff_after, namespace, line - 1, 0, {
-          line_hl_group = "CodeReaderActiveLine",
-        })
-      end
-    end
+    apply_diff_highlights(model, state.buffers.diff_before, state.buffers.diff_after)
     return
   end
 

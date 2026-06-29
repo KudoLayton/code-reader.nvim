@@ -87,6 +87,22 @@ local after_text = table.concat(vim.api.nvim_buf_get_lines(vim.api.nvim_win_get_
 contains(before_text, "local enabled = false", "before full content")
 contains(after_text, "local enabled = true", "after full content")
 contains(after_text, "local mode = \"fast\"", "after added content")
+contains(before_text, "~ local enabled = false", "before modified marker")
+contains(after_text, "~ local enabled = true", "after modified marker")
+contains(after_text, "+ local mode = \"fast\"", "after added marker")
+
+local before_marks = vim.api.nvim_buf_get_extmarks(vim.api.nvim_win_get_buf(state.windows.code), -1, 0, -1, {
+  details = true,
+})
+local has_word_mark = false
+for _, mark in ipairs(before_marks) do
+  local details = mark[4] or {}
+  if details.hl_group == "CodeReaderDiffWord" then
+    has_word_mark = true
+    break
+  end
+end
+eq(has_word_mark, true, "modified word highlight")
 
 vim.fn.writefile({
   "local M = {}",
@@ -112,6 +128,8 @@ local stale_before = table.concat(vim.api.nvim_buf_get_lines(vim.api.nvim_win_ge
 local stale_after = table.concat(vim.api.nvim_buf_get_lines(vim.api.nvim_win_get_buf(state.windows.diff_after), 0, -1, false), "\n")
 contains(stale_before, "local enabled = false", "stale before hunk")
 contains(stale_after, "local enabled = true", "stale after hunk")
+contains(stale_before, "~ local enabled = false", "stale before modified marker")
+contains(stale_after, "+ local mode = \"fast\"", "stale after add marker")
 
 vim.cmd("CodeReaderClose")
 eq(vim.api.nvim_get_current_buf(), initial_code_buf, "initial code buffer restored")
