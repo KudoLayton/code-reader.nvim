@@ -2,6 +2,7 @@ local source = require("code_reader.source")
 local mermaid = require("code_reader.mermaid")
 local diff = require("code_reader.diff")
 local diff_render = require("code_reader.diff_render")
+local syntax = require("code_reader.syntax")
 
 local M = {}
 
@@ -693,6 +694,8 @@ function M.render_source(state)
     vim.api.nvim_win_set_cursor(state.windows.diff_after, { cursor_line, 0 })
 
     apply_diff_highlights(model, state.buffers.diff_before, state.buffers.diff_after, state)
+    syntax.highlight_diff(state.buffers.diff_before, model.rows, "before", file.path, model.gutter_width or 0)
+    syntax.highlight_diff(state.buffers.diff_after, model.rows, "after", file.path, model.gutter_width or 0)
     return
   end
 

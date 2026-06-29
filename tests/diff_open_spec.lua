@@ -29,6 +29,24 @@ local function has_line_highlight(buf, line_text, group)
   return false
 end
 
+local function has_syntax_highlight(buf, line_text, language)
+  local lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
+  for index, line in ipairs(lines) do
+    if line:find(line_text, 1, true) then
+      local marks = vim.api.nvim_buf_get_extmarks(buf, -1, { index - 1, 0 }, { index - 1, -1 }, {
+        details = true,
+      })
+      for _, mark in ipairs(marks) do
+        local details = mark[4] or {}
+        if details.hl_group and details.hl_group:match("^@.*%." .. language .. "$") then
+          return true
+        end
+      end
+    end
+  end
+  return false
+end
+
 local tmp = vim.fn.tempname()
 vim.fn.mkdir(tmp .. "/.code_reader/diffs", "p")
 vim.fn.mkdir(tmp .. "/src", "p")
@@ -132,6 +150,8 @@ eq(has_line_highlight(vim.api.nvim_win_get_buf(state.windows.code), 'return "old
 eq(has_line_highlight(vim.api.nvim_win_get_buf(state.windows.code), "local M = {}", "CodeReaderActiveLine"), true, "focused context active")
 eq(has_line_highlight(vim.api.nvim_win_get_buf(state.windows.code), "function M.name()", "CodeReaderDimLine"), true, "unrelated context dimmed")
 eq(has_line_highlight(vim.api.nvim_win_get_buf(state.windows.code), "local enabled = false", "CodeReaderDiffModify"), true, "focused modified remains highlighted")
+eq(has_syntax_highlight(vim.api.nvim_win_get_buf(state.windows.code), "local enabled = false", "lua"), true, "before diff syntax highlighted")
+eq(has_syntax_highlight(vim.api.nvim_win_get_buf(state.windows.diff_after), "local enabled = true", "lua"), true, "after diff syntax highlighted")
 
 code_reader.toggle_focus()
 eq(has_line_highlight(vim.api.nvim_win_get_buf(state.windows.code), 'return "old"', "CodeReaderDimLine"), false, "focus toggle removes diff dimming")
@@ -182,6 +202,8 @@ contains(stale_before, "local enabled = false", "stale before hunk")
 contains(stale_after, "local enabled = true", "stale after hunk")
 contains(stale_before, "~ local enabled = false", "stale before modified marker")
 contains(stale_after, "+ local mode = \"fast\"", "stale after add marker")
+eq(has_syntax_highlight(vim.api.nvim_win_get_buf(state.windows.code), "local enabled = false", "lua"), true, "stale before syntax highlighted")
+eq(has_syntax_highlight(vim.api.nvim_win_get_buf(state.windows.diff_after), "local mode = \"fast\"", "lua"), true, "stale after syntax highlighted")
 
 vim.cmd("CodeReaderClose")
 eq(vim.api.nvim_get_current_buf(), initial_code_buf, "initial code buffer restored")
