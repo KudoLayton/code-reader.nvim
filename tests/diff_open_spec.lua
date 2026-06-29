@@ -117,6 +117,8 @@ contains(explanation, "View: full file side-by-side", "full view header")
 contains(explanation, "Status: applies", "applies header")
 contains(explanation, "Before: `src/app.lua#L1-L4`", "before range")
 contains(explanation, "After: `src/app.lua#L1-L5`", "after range")
+contains(explanation, "- Next: [[2|Rename value]] (↓8 src/app.lua#H2)", "diff next navigation position")
+contains(explanation, "- Diff: `src/app.lua#H1`", "diff navigation source")
 
 local before_text = table.concat(vim.api.nvim_buf_get_lines(vim.api.nvim_win_get_buf(state.windows.code), 0, -1, false), "\n")
 local after_text = table.concat(vim.api.nvim_buf_get_lines(vim.api.nvim_win_get_buf(state.windows.diff_after), 0, -1, false), "\n")

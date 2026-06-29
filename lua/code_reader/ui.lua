@@ -120,6 +120,34 @@ local function find_diff_target(state, diff_ref)
   return file, hunk
 end
 
+local function step_link_with_diff_position(state, step, current_diff_ref)
+  local target_diff_ref = step.diff_refs and step.diff_refs[1] or nil
+  local suffix = nil
+
+  if not target_diff_ref then
+    suffix = " (no diff)"
+  else
+    local target_file, target_hunk = find_diff_target(state, target_diff_ref)
+    local current_file, current_hunk = find_diff_target(state, current_diff_ref)
+    if not (target_file and target_hunk) then
+      suffix = " (missing diff)"
+    elseif not (current_file and current_hunk) or current_file.path ~= target_file.path then
+      suffix = " (↗ " .. diff_ref_label(target_diff_ref) .. ")"
+    else
+      local delta = target_hunk.new_start - current_hunk.new_start
+      if delta < 0 then
+        suffix = " (↑" .. tostring(math.abs(delta)) .. " " .. diff_ref_label(target_diff_ref) .. ")"
+      elseif delta > 0 then
+        suffix = " (↓" .. tostring(delta) .. " " .. diff_ref_label(target_diff_ref) .. ")"
+      else
+        suffix = " (= " .. diff_ref_label(target_diff_ref) .. ")"
+      end
+    end
+  end
+
+  return step_link(step) .. suffix
+end
+
 local function analyze_diff_file(state, file)
   if not file then
     return { status = "missing", before_lines = {}, after_lines = {} }
@@ -260,24 +288,35 @@ local function append_navigation(lines, state, step, source_ref)
   local next_step = state.doc.steps[state.current + 1]
   local parent = parent_step(state, step)
   local children = child_steps(state, step)
+  local current_diff_ref = step.diff_refs and step.diff_refs[1] or nil
+  local link_with_position = function(target_step)
+    if is_diff_mode(state) then
+      return step_link_with_diff_position(state, target_step, current_diff_ref)
+    end
+    return step_link_with_position(target_step, source_ref)
+  end
 
   if previous then
-    table.insert(lines, "- Previous: " .. step_link_with_position(previous, source_ref))
+    table.insert(lines, "- Previous: " .. link_with_position(previous))
   end
   if next_step then
-    table.insert(lines, "- Next: " .. step_link_with_position(next_step, source_ref))
+    table.insert(lines, "- Next: " .. link_with_position(next_step))
   end
   if parent then
-    table.insert(lines, "- Parent: " .. step_link_with_position(parent, source_ref))
+    table.insert(lines, "- Parent: " .. link_with_position(parent))
   end
   if #children > 0 then
     table.insert(lines, "- Children:")
     for _, child in ipairs(children) do
-      table.insert(lines, "  - " .. step_link_with_position(child, source_ref))
+      table.insert(lines, "  - " .. link_with_position(child))
     end
   end
 
-  table.insert(lines, "- Source: `" .. source_ref_label(source_ref) .. "`")
+  if is_diff_mode(state) then
+    table.insert(lines, "- Diff: `" .. diff_ref_label(current_diff_ref) .. "`")
+  else
+    table.insert(lines, "- Source: `" .. source_ref_label(source_ref) .. "`")
+  end
 end
 
 local function collect_source_paths(state)

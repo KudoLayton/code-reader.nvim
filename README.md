@@ -142,7 +142,7 @@ Commands:
 - `:CodeReaderToggleFocus` toggles dimming for unrelated source lines.
 - `:CodeReaderClose` closes the explanation and TOC views and clears Code Reader highlights.
 
-Inside the explanation panel, `[r` and `]r` move between steps. Press `<CR>` on links in the `Navigation` list to jump to related steps or open the source. Navigation links show source movement hints such as `(↑3)`, `(↓8)`, or `(↗ src/file.lua#L10-L20)`. Press `q` in the explanation or TOC panel to close Code Reader.
+Inside the explanation panel, `[r` and `]r` move between steps. Press `<CR>` on links in the `Navigation` list to jump to related steps or open the source. Navigation links show source or diff movement hints such as `(↑3)`, `(↓8)`, `(↗ src/file.lua#L10-L20)`, or `(↓8 src/file.lua#H2)`. Press `q` in the explanation or TOC panel to close Code Reader.
 
 In the TOC panel, press `<CR>` to jump to the selected step. The explanation view and code view update together while focus stays in the TOC. Press `<CR>` on an internal step link or a `treesitter://` symbol link in the explanation panel to activate it.
 
