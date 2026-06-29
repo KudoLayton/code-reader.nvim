@@ -64,6 +64,28 @@ local function step_link(step)
   return "[[" .. step.id .. "|" .. step.title .. "]]"
 end
 
+local function step_link_with_position(step, current_source_ref)
+  local target_source_ref = step.sources and step.sources[1] or nil
+  local suffix = nil
+
+  if not target_source_ref then
+    suffix = " (no source)"
+  elseif not current_source_ref or current_source_ref.path ~= target_source_ref.path then
+    suffix = " (↗ " .. source_ref_label(target_source_ref) .. ")"
+  else
+    local delta = target_source_ref.start_line - current_source_ref.start_line
+    if delta < 0 then
+      suffix = " (↑" .. tostring(math.abs(delta)) .. ")"
+    elseif delta > 0 then
+      suffix = " (↓" .. tostring(delta) .. ")"
+    else
+      suffix = " (=)"
+    end
+  end
+
+  return step_link(step) .. suffix
+end
+
 local function is_front_page(step)
   return step and step.kind == "front_page"
 end
@@ -121,18 +143,18 @@ local function append_navigation(lines, state, step, source_ref)
   local children = child_steps(state, step)
 
   if previous then
-    table.insert(lines, "- Previous: " .. step_link(previous))
+    table.insert(lines, "- Previous: " .. step_link_with_position(previous, source_ref))
   end
   if next_step then
-    table.insert(lines, "- Next: " .. step_link(next_step))
+    table.insert(lines, "- Next: " .. step_link_with_position(next_step, source_ref))
   end
   if parent then
-    table.insert(lines, "- Parent: " .. step_link(parent))
+    table.insert(lines, "- Parent: " .. step_link_with_position(parent, source_ref))
   end
   if #children > 0 then
     table.insert(lines, "- Children:")
     for _, child in ipairs(children) do
-      table.insert(lines, "  - " .. step_link(child))
+      table.insert(lines, "  - " .. step_link_with_position(child, source_ref))
     end
   end
 
