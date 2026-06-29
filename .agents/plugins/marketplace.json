@@ -1,0 +1,20 @@
+{
+  "name": "code-reader",
+  "interface": {
+    "displayName": "Code Reader"
+  },
+  "plugins": [
+    {
+      "name": "code-reader-authoring",
+      "source": {
+        "source": "local",
+        "path": "./plugins/code-reader-authoring"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity"
+    }
+  ]
+}

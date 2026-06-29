@@ -1,0 +1,21 @@
+{
+  "name": "code-reader-authoring",
+  "version": "0.1.0",
+  "description": "Author Code Reader walkthrough and diff explanation markdown.",
+  "author": {
+    "name": "KudoLayton"
+  },
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Code Reader Authoring",
+    "shortDescription": "Write Code Reader explanation markdown.",
+    "longDescription": "Code Reader Authoring helps Codex create and validate code walkthrough and diff explanation markdown for code-reader.nvim.",
+    "developerName": "KudoLayton",
+    "category": "Productivity",
+    "capabilities": [
+      "Write",
+      "Validate"
+    ],
+    "defaultPrompt": "Use Code Reader Authoring to explain this feature or diff."
+  }
+}

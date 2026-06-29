@@ -1,0 +1,4 @@
+interface:
+  display_name: "Write Diff Explanation"
+  short_description: "Create Code Reader diff walkthroughs."
+  default_prompt: "Use $write-diff-explanation to create a Code Reader diff explanation for this patch."
