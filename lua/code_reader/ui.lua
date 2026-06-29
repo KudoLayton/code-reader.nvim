@@ -59,6 +59,11 @@ function M.setup_highlights()
   vim.api.nvim_set_hl(0, "CodeReaderActiveLine", { bg = "#263238", default = true })
   vim.api.nvim_set_hl(0, "CodeReaderDimLine", { fg = "#6b7280", default = true })
   vim.api.nvim_set_hl(0, "CodeReaderCurrentStep", { fg = "#f8fafc", bg = "#374151", bold = true, default = true })
+  vim.api.nvim_set_hl(0, "CodeReaderSymbolText", { bg = "#3f3f46", default = true })
+  vim.api.nvim_set_hl(0, "CodeReaderSymbolRead", { bg = "#1e3a5f", default = true })
+  vim.api.nvim_set_hl(0, "CodeReaderSymbolWrite", { bg = "#5f3b1e", default = true })
+  vim.api.nvim_set_hl(0, "CodeReaderSymbolFallback", { bg = "#334155", default = true })
+  vim.api.nvim_set_hl(0, "CodeReaderSymbolSeed", { underline = true, bold = true, default = true })
 end
 
 function M.open_layout(state)
