@@ -12,6 +12,12 @@ type: code-reader
 version: 1
 ---
 
+<!-- code-reader: front-page -->
+# Code Reader Overview
+
+Explain the purpose, scope, and high-level structure of this walkthrough.
+
+---
 # 1. Request lifecycle
 
 Source: `src/server.lua#L10-L30`
@@ -29,6 +35,8 @@ Explain the nested call-stack detail here.
 ```
 
 - The first frontmatter block identifies the file as `type: code-reader`.
+- An optional first section can be marked as a front page with `<!-- code-reader: front-page -->`.
+- The front page has no source range. It is rendered in the code window with its main content, an automatic source-file summary, and a step TOC.
 - Step blocks are separated by a line containing only `---`.
 - The first Markdown heading in a step becomes the step title.
 - Heading depth drives TOC nesting, so `## 1.1 ...` becomes a nested call-stack step.

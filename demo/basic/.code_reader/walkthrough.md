@@ -3,6 +3,12 @@ type: code-reader
 version: 1
 ---
 
+<!-- code-reader: front-page -->
+# Demo Overview
+
+This walkthrough explains how the demo app handles a request from the top-level entry point through parsing, validation, and response rendering.
+
+---
 # 1. Request lifecycle
 
 Source: `src/app.lua#L12-L21`

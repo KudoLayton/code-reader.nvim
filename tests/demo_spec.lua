@@ -29,7 +29,10 @@ local lines = vim.fn.readfile(explanation_path)
 local doc = parser.parse(table.concat(lines, "\n"), { path = explanation_path })
 
 eq(doc.frontmatter.type, "code-reader", "frontmatter type")
-eq(#doc.steps, 5, "demo step count")
+eq(#doc.steps, 6, "demo step count")
+eq(doc.front_page_index, 1, "demo front page index")
+eq(doc.steps[1].kind, "front_page", "demo front page kind")
+eq(#doc.steps[1].sources, 0, "demo front page source count")
 
 local forbidden_dirs = {
   "plugin",
@@ -53,13 +56,15 @@ for _, name in ipairs(forbidden_files) do
 end
 
 for _, step in ipairs(doc.steps) do
-  ok(#step.sources > 0, "step has source: " .. step.id)
-  for _, source_ref in ipairs(step.sources) do
-    local path = demo_root .. "/" .. source_ref.path
-    eq(vim.fn.filereadable(path), 1, "source exists: " .. source_ref.path)
-    local source_lines = vim.fn.readfile(path)
-    ok(source_ref.start_line >= 1, "source range starts after first line: " .. source_ref.path)
-    ok(source_ref.end_line <= #source_lines, "source range ends inside file: " .. source_ref.path)
+  if step.kind ~= "front_page" then
+    ok(#step.sources > 0, "step has source: " .. step.id)
+    for _, source_ref in ipairs(step.sources) do
+      local path = demo_root .. "/" .. source_ref.path
+      eq(vim.fn.filereadable(path), 1, "source exists: " .. source_ref.path)
+      local source_lines = vim.fn.readfile(path)
+      ok(source_ref.start_line >= 1, "source range starts after first line: " .. source_ref.path)
+      ok(source_ref.end_line <= #source_lines, "source range ends inside file: " .. source_ref.path)
+    end
   end
 end
 
