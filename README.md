@@ -80,9 +80,13 @@ Open the markdown file with `:CodeReaderOpen`. Code Reader parses the referenced
 
 - Coverage is based on changed lines inside hunks, not raw diff header or context lines.
 - `Diff: path#Hn` references the nth hunk for that file.
+- `Diff: path#Hn@old:Lx-Ly` or `Diff: path#Hn@new:Lx-Ly` references a smaller side-specific line range. Use `@a` for old and `@b` for new when you want Git-style shorthand.
+- Range bounds can mix absolute file lines with hunk-relative bounds, such as `Diff: path#Hn@new:L(-1)-L(+2)` or `Diff: path#Hn@old:L(-1)-L22`. Relative start bounds are measured from the hunk start, and relative end bounds are measured from the hunk end.
+- Signed shorthand such as `L-1-L22` is accepted, but `L(-1)-L22` is the recommended written form.
+- `padding=N` and `pad=N` expand the selected hunk by the same number of lines on both sides, for example `Diff: path#Hn@new:padding=2`.
 - If the current source matches the pre-change context, Code Reader shows full-file before/after buffers with an in-memory patched after version.
 - If the current source already matches the post-change context, Code Reader reconstructs the before version in memory and still shows full-file before/after buffers.
-- If the hunk context is stale or only partially matches, Code Reader falls back to a patch-only side-by-side snippet.
+- If the current source cannot be compared for a requested range, Code Reader falls back to the hunk-only side-by-side snippet and keeps the view inside the hunk where possible.
 - Diff side-by-side views include old/new line-number gutters, `~`/`+`/`-`/`>` markers, moved-line detection, and inline highlights for modified spans.
 - Diff side-by-side views apply Tree-sitter syntax highlighting to the code portion when a parser is available for the changed file.
 - Focus mode also applies to full-file diff views: unrelated rows are dimmed while the current explanation hunk stays highlighted.

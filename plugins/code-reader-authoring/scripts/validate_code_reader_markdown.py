@@ -11,7 +11,7 @@ from pathlib import Path
 
 FRONT_PAGE_MARKER = "<!-- code-reader: front-page -->"
 SOURCE_RE = re.compile(r"([\w._\-/\\]+)#L(\d+)(?:-L?(\d+))?")
-DIFF_RE = re.compile(r"([\w._\-/\\]+)#([Hh]\d+)")
+DIFF_RE = re.compile(r"([\w._\-/\\]+)#([Hh]\d+)(?:@([A-Za-z]+):([^\s`\]]+))?")
 STEP_LINK_RE = re.compile(r"\[\[([^\]|]+)(?:\|[^\]]+)?\]\]")
 
 
@@ -171,11 +171,91 @@ def collect_source_refs(lines: list[str]) -> list[str]:
     return [match.group(0) for line in lines for match in SOURCE_RE.finditer(line)]
 
 
-def collect_diff_refs(lines: list[str]) -> list[tuple[str, str]]:
-    refs: list[tuple[str, str]] = []
+def normalize_diff_side(value: str | None) -> str | None:
+    if value is None:
+        return None
+    value = value.lower()
+    if value == "a":
+        return "old"
+    if value == "b":
+        return "new"
+    if value in {"old", "new"}:
+        return value
+    return None
+
+
+def parse_diff_bound(value: str) -> tuple[str, int] | None:
+    if value.startswith("(") and value.endswith(")"):
+        value = value[1:-1]
+    if not re.match(r"^[+-]?\d+$", value):
+        return None
+    mode = "relative" if value.startswith(("+", "-")) else "absolute"
+    return mode, int(value)
+
+
+def parse_diff_range(value: str) -> bool:
+    if not value.startswith("L"):
+        return False
+    body = value[1:]
+    start_text: str | None = None
+    end_text: str | None = None
+
+    if body.startswith("("):
+        close = body.find(")")
+        if close >= 0 and body[close + 1 : close + 3] == "-L":
+            start_text = body[: close + 1]
+            end_text = body[close + 3 :]
+    if start_text is None:
+        match = re.match(r"^([+-]\d+)-L(.+)$", body)
+        if match:
+            start_text, end_text = match.group(1), match.group(2)
+    if start_text is None:
+        match = re.match(r"^(\d+)-L(.+)$", body)
+        if match:
+            start_text, end_text = match.group(1), match.group(2)
+    if start_text is None:
+        bound = parse_diff_bound(body)
+        if not bound:
+            return False
+        return bound[0] == "relative" or bound[1] >= 1
+
+    start = parse_diff_bound(start_text)
+    end = parse_diff_bound(end_text or "")
+    if not (start and end):
+        return False
+    if start[0] == "absolute" and start[1] < 1:
+        return False
+    if end[0] == "absolute" and end[1] < 1:
+        return False
+    if start[0] == "absolute" and end[0] == "absolute" and end[1] < start[1]:
+        return False
+    return True
+
+
+def validate_diff_modifier(side: str | None, modifier: str | None) -> bool:
+    if side is None and modifier is None:
+        return True
+    if not normalize_diff_side(side):
+        return False
+    if modifier is None:
+        return False
+    padding_match = re.match(r"^(?:padding|pad)=(\d+)$", modifier)
+    if padding_match:
+        return int(padding_match.group(1)) >= 0
+    return parse_diff_range(modifier)
+
+
+def collect_diff_refs(lines: list[str]) -> list[tuple[str, str, bool]]:
+    refs: list[tuple[str, str, bool]] = []
     for line in lines:
         for match in DIFF_RE.finditer(line):
-            refs.append((normalize_path(match.group(1)), match.group(2).upper()))
+            refs.append(
+                (
+                    normalize_path(match.group(1)),
+                    match.group(2).upper(),
+                    validate_diff_modifier(match.group(3), match.group(4)),
+                )
+            )
     return refs
 
 
@@ -250,7 +330,9 @@ def validate_doc(project_root: Path, markdown_path: Path, allow_partial_diff: bo
             refs = collect_diff_refs(section_lines)
             if not refs:
                 errors.append(f"section starting at line {section_start} has no diff reference")
-            for path, hunk_id in refs:
+            for path, hunk_id, valid_modifier in refs:
+                if not valid_modifier:
+                    errors.append(f"line {section_start}: invalid diff range modifier `{path}#{hunk_id}`")
                 if path not in diff_files:
                     errors.append(f"line {section_start}: diff file does not contain path `{path}`")
                 elif hunk_id not in diff_files[path]:

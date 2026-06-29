@@ -19,21 +19,28 @@ Diff: `src/app.lua#H1`
 The context no longer stores the fixed demo timestamp. This is a pure deletion, so the before side is marked with `-` and the after side has a filler line.
 
 ---
-# 2. Preserve request path with request id
+# 2. Preserve request path near user data
 
-Diff: `src/request.lua#H1`
+Diff: `src/request.lua#H1@new:L(-1)-L8`
 
-The `path` assignment is moved below `user`, and a new `request_id` field is added. The side-by-side view should mark the moved `path` line with `>` and the new request id lines with `+`.
+The `path` assignment is moved below `user`, keeping the returned path close to the user data that appears with it. This step uses a partial range inside a larger hunk so the explanation stays focused.
 
 ---
-# 3. Allow PUT requests
+# 3. Add request id with padding
+
+Diff: `src/request.lua#H1@new:padding=1`
+
+The same hunk also adds `request_id` to the parsed request and returned table. The padding range includes one line around the hunk so the new field can be read in context.
+
+---
+# 4. Allow PUT requests
 
 Diff: `src/request.lua#H2`
 
 The validation condition keeps the existing `GET` and `POST` behavior, then adds `PUT` as another accepted method. This is a single-line modification, so both sides are marked with `~` and the changed span is highlighted inline.
 
 ---
-# 4. Return created status
+# 5. Return created status
 
 Diff: `src/response.lua#H1`
 

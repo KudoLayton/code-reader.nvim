@@ -45,6 +45,15 @@ version: 1
 - Use step-level Mermaid diagrams only when they make a specific hunk or cross-file relationship easier to review.
 - Each non-front-page step should include at least one diff reference.
 - Write diff references as `Diff: path#Hn`, where `Hn` is the file-local hunk number from the unified diff.
+- For large hunks or whole-file additions, split the explanation with side-specific ranges:
+  - `Diff: path#Hn@old:L10-L18`
+  - `Diff: path#Hn@new:L20-L40`
+  - `@a` means old/before and `@b` means new/after.
+- To include hunk-adjacent lines, prefer explicit hunk-relative bounds:
+  - `Diff: path#Hn@new:L(-1)-L(+2)` means from one line before the new-side hunk start through two lines after the new-side hunk end.
+  - `Diff: path#Hn@old:L(-1)-L22` mixes a relative start with an absolute end line.
+  - `L-1-L22` is accepted as shorthand, but write `L(-1)-L22` by default.
+- Use `padding=N` or `pad=N` when the same number of lines should be shown before and after the hunk: `Diff: path#Hn@new:padding=2`.
 - Prefer covering every hunk in the diff unless the user asks for a partial explanation.
 
 ## Validation
