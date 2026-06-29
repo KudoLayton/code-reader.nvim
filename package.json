@@ -1,0 +1,11 @@
+{
+  "name": "code-reader.nvim",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "mermaid:smoke": "node scripts/code-reader-mermaid.mjs < scripts/mermaid-smoke.mmd"
+  },
+  "dependencies": {
+    "beautiful-mermaid": "^1.1.3"
+  }
+}
