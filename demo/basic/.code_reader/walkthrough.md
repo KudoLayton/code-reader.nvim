@@ -6,7 +6,11 @@ version: 1
 <!-- code-reader: front-page -->
 # Demo Overview
 
-This walkthrough explains how the demo app handles a request from the top-level entry point through parsing, validation, and response rendering.
+This demo is a small HTTP-style request handler. It shows how a raw request becomes a predictable response without adding framework details or external dependencies.
+
+The main flow starts in `app.handle`, which builds request context and coordinates the rest of the program. The `request` module normalizes input and rejects invalid requests, while the `response` module turns the result into either a success response or a clear error response.
+
+Read this walkthrough as a map of the program shape: first the top-level lifecycle, then the parse and validation steps, then the two response paths that finish the request.
 
 ---
 # 1. Request lifecycle
