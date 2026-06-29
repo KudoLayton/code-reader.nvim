@@ -7,6 +7,33 @@ local function eq(actual, expected, label)
   end
 end
 
+local render_markdown_calls = {}
+package.preload["render-markdown"] = function()
+  return {
+    render = function(ctx)
+      table.insert(render_markdown_calls, ctx)
+    end,
+  }
+end
+
+local function has_syntax_highlight(buf, line_text, language)
+  local lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
+  for index, line in ipairs(lines) do
+    if line:find(line_text, 1, true) then
+      local marks = vim.api.nvim_buf_get_extmarks(buf, -1, { index - 1, 0 }, { index - 1, -1 }, {
+        details = true,
+      })
+      for _, mark in ipairs(marks) do
+        local details = mark[4] or {}
+        if details.hl_group and details.hl_group:match("^@.*%." .. language .. "$") then
+          return true
+        end
+      end
+    end
+  end
+  return false
+end
+
 local tmp = vim.fn.tempname()
 vim.fn.mkdir(tmp .. "/.code_reader", "p")
 vim.fn.mkdir(tmp .. "/src", "p")
@@ -53,6 +80,11 @@ vim.fn.writefile({
   "Source: `src/app.lua#L1-L2`",
   "",
   "The module table is prepared.",
+  "",
+  "```lua",
+  "local enabled = true",
+  "return enabled",
+  "```",
   "",
   "``` mermaid",
   "flowchart TD",
@@ -116,7 +148,11 @@ eq(state.current, 2, "next step")
 eq(vim.api.nvim_buf_get_lines(state.buffers.explanation, 0, 1, false)[1], "# 1 Module setup", "next explanation title")
 local rendered_explanation = table.concat(vim.api.nvim_buf_get_lines(state.buffers.explanation, 0, -1, false), "\n")
 eq(rendered_explanation:find("rendered mermaid diagram", 1, true) ~= nil, true, "explanation mermaid rendered")
+eq(has_syntax_highlight(state.buffers.explanation, "local enabled = true", "lua"), true, "explanation code block syntax highlighted")
 eq(vim.api.nvim_buf_get_name(vim.api.nvim_win_get_buf(state.windows.code)), source_file, "next step opens source")
+eq(#render_markdown_calls > 0, true, "render-markdown integration called")
+eq(render_markdown_calls[#render_markdown_calls].buf, state.buffers.explanation, "render-markdown explanation buffer")
+eq(render_markdown_calls[#render_markdown_calls].event, "CodeReader", "render-markdown event")
 
 code_reader.prev()
 eq(state.current, 1, "previous step")

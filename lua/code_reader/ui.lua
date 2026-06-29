@@ -32,6 +32,31 @@ local function render_markdown_lines(text, state)
   return mermaid.render_lines(split_lines(text), state.options and state.options.mermaid or {})
 end
 
+local function render_markdown_buffer(buf, win)
+  syntax.highlight_markdown(buf)
+
+  local ok, render_markdown = pcall(require, "render-markdown")
+  if not ok or type(render_markdown.render) ~= "function" then
+    return
+  end
+
+  pcall(render_markdown.render, {
+    buf = buf,
+    win = win,
+    event = "CodeReader",
+    config = {
+      link = {
+        custom = {
+          code_reader_symbol = {
+            icon = "CR ",
+            pattern = "^treesitter://",
+          },
+        },
+      },
+    },
+  })
+end
+
 local function create_scratch(name, filetype)
   local buf = vim.api.nvim_create_buf(false, true)
   vim.api.nvim_buf_set_name(buf, name)
@@ -513,6 +538,7 @@ function M.render_explanation(state)
 
     append_navigation(lines, state, step, nil)
     set_lines(state.buffers.explanation, lines)
+    render_markdown_buffer(state.buffers.explanation, state.windows.explanation)
     return
   end
 
@@ -541,6 +567,7 @@ function M.render_explanation(state)
 
     append_navigation(lines, state, step, nil)
     set_lines(state.buffers.explanation, lines)
+    render_markdown_buffer(state.buffers.explanation, state.windows.explanation)
     return
   end
 
@@ -566,6 +593,7 @@ function M.render_explanation(state)
   append_navigation(lines, state, step, source_ref)
 
   set_lines(state.buffers.explanation, lines)
+  render_markdown_buffer(state.buffers.explanation, state.windows.explanation)
 end
 
 function M.render_toc(state)
@@ -649,6 +677,7 @@ function M.render_front_page(state)
   set_lines(state.buffers.front_page, lines)
   vim.api.nvim_win_set_buf(state.windows.code, state.buffers.front_page)
   vim.api.nvim_win_set_cursor(state.windows.code, { 1, 0 })
+  render_markdown_buffer(state.buffers.front_page, state.windows.code)
 end
 
 function M.render_source(state)

@@ -32,6 +32,10 @@ end
 
 local function language_for_path(path)
   local filetype = filetype_for_path(path)
+  return M.language_for_filetype(filetype)
+end
+
+function M.language_for_filetype(filetype)
   if not filetype or filetype == "" then
     return nil
   end
@@ -125,6 +129,57 @@ function M.highlight_diff(buf, rows, side, path, col_offset)
 
   local lines, line_map = collect_side_lines(rows, side)
   return highlight_lines(buf, language, lines, line_map, col_offset or 0)
+end
+
+local function fence_language(line)
+  local info = line:match("^%s*```%s*(.-)%s*$")
+  if not info then
+    return nil
+  end
+  return info:match("^(%S+)")
+end
+
+local function is_closing_fence(line)
+  return line:match("^%s*```%s*$") ~= nil
+end
+
+function M.highlight_markdown(buf)
+  if not (buf and vim.api.nvim_buf_is_valid(buf)) then
+    return 0
+  end
+
+  vim.api.nvim_buf_clear_namespace(buf, M.namespace, 0, -1)
+
+  local buffer_lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
+  local total = 0
+  local index = 1
+  while index <= #buffer_lines do
+    local name = fence_language(buffer_lines[index])
+    if name then
+      local start_index = index
+      local code_lines = {}
+      local line_map = {}
+      index = index + 1
+      while index <= #buffer_lines and not is_closing_fence(buffer_lines[index]) do
+        line_map[#code_lines] = index - 1
+        table.insert(code_lines, buffer_lines[index])
+        index = index + 1
+      end
+
+      local language = M.language_for_filetype(name)
+      if language and #code_lines > 0 then
+        total = total + highlight_lines(buf, language, code_lines, line_map, 0)
+      end
+
+      if index == start_index then
+        index = index + 1
+      end
+    else
+      index = index + 1
+    end
+  end
+
+  return total
 end
 
 return M
