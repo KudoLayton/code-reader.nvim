@@ -34,3 +34,5 @@ Manual review checklist:
 - Edit a source file, reopen the walkthrough, and check the freshness status.
 - Open the diff demo and confirm the source area becomes a before/after side-by-side view.
 - Check that the diff demo front page reports changed-line and hunk coverage.
+- Confirm the diff demo gutter shows `~`, `+`, `-`, and `>` markers.
+- Confirm modified lines have inline highlights on the changed span.

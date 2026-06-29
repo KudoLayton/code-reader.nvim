@@ -107,10 +107,10 @@ local parsed_diff = diff.parse(table.concat(vim.fn.readfile(diff_path), "\n"))
 
 eq(diff_doc.frontmatter.type, "code-reader-diff", "diff demo frontmatter type")
 eq(diff_doc.frontmatter.diff, "./request-update.diff", "diff demo diff path")
-eq(#diff_doc.steps, 3, "diff demo step count")
+eq(#diff_doc.steps, 5, "diff demo step count")
 eq(diff_doc.front_page_index, 1, "diff demo front page index")
-eq(#parsed_diff.files, 2, "diff demo file count")
-eq(parsed_diff.total_changed_lines, 4, "diff demo changed line count")
+eq(#parsed_diff.files, 3, "diff demo file count")
+eq(parsed_diff.total_changed_lines, 9, "diff demo changed line count")
 
 for _, step in ipairs(diff_doc.steps) do
   if step.kind ~= "front_page" then

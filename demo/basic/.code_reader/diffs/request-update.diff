@@ -1,21 +1,49 @@
-diff --git a/src/request.lua b/src/request.lua
+diff --git a/src/app.lua b/src/app.lua
 index 1111111..2222222 100644
+--- a/src/app.lua
++++ b/src/app.lua
+@@ -6,6 +6,5 @@ local app = {}
+ local function build_context(raw_request)
+   return {
+     raw_request = raw_request,
+-    received_at = "demo-clock",
+   }
+ end
+diff --git a/src/request.lua b/src/request.lua
+index 3333333..4444444 100644
 --- a/src/request.lua
 +++ b/src/request.lua
-@@ -15,7 +15,7 @@ function request.validate_request(parsed)
+@@ -3,11 +3,13 @@ local request = {}
+ function request.parse_request(raw_request)
+   local method = raw_request.method or "GET"
+-  local path = raw_request.path or "/"
+   local user = raw_request.user or "anonymous"
++  local path = raw_request.path or "/"
++  local request_id = raw_request.request_id or "demo-request"
+ 
+   return {
+     method = method,
+     path = path,
+     user = user,
++    request_id = request_id,
+   }
+ end
+@@ -15,7 +17,7 @@ end
+ function request.validate_request(parsed)
 -  if parsed.method ~= "GET" and parsed.method ~= "POST" then
 +  if parsed.method ~= "GET" and parsed.method ~= "POST" and parsed.method ~= "PUT" then
      return false, "unsupported method"
    end
  
 diff --git a/src/response.lua b/src/response.lua
-index 3333333..4444444 100644
+index 5555555..6666666 100644
 --- a/src/response.lua
 +++ b/src/response.lua
-@@ -7,7 +7,7 @@ end
+@@ -7,6 +7,6 @@ end
  function response.render_response(parsed)
    return {
 -    status = status_line(200),
 +    status = status_line(201),
      body = "Hello, " .. parsed.user .. " from " .. parsed.path,
    }
+ end
