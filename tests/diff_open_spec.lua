@@ -29,6 +29,24 @@ local function has_line_highlight(buf, line_text, group)
   return false
 end
 
+local function has_line_hl_group(buf, line_text, group)
+  local lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
+  for index, line in ipairs(lines) do
+    if line:find(line_text, 1, true) then
+      local marks = vim.api.nvim_buf_get_extmarks(buf, -1, { index - 1, 0 }, { index - 1, -1 }, {
+        details = true,
+      })
+      for _, mark in ipairs(marks) do
+        local details = mark[4] or {}
+        if details.line_hl_group == group then
+          return true
+        end
+      end
+    end
+  end
+  return false
+end
+
 local function has_syntax_highlight(buf, line_text, language)
   local lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
   for index, line in ipairs(lines) do
@@ -198,6 +216,8 @@ eq(has_line_highlight(vim.api.nvim_win_get_buf(state.windows.code), 'return "old
 eq(has_line_highlight(vim.api.nvim_win_get_buf(state.windows.code), "local M = {}", "CodeReaderActiveLine"), true, "focused context active")
 eq(has_line_highlight(vim.api.nvim_win_get_buf(state.windows.code), "function M.name()", "CodeReaderDimLine"), true, "unrelated context dimmed")
 eq(has_line_highlight(vim.api.nvim_win_get_buf(state.windows.code), "local enabled = false", "CodeReaderDiffModify"), true, "focused modified remains highlighted")
+eq(has_line_hl_group(vim.api.nvim_win_get_buf(state.windows.code), "local M = {}", "CodeReaderActiveLine"), false, "diff context avoids line_hl_group")
+eq(has_line_hl_group(vim.api.nvim_win_get_buf(state.windows.code), "local enabled = false", "CodeReaderDiffModify"), false, "diff modified avoids line_hl_group")
 eq(has_syntax_highlight(vim.api.nvim_win_get_buf(state.windows.code), "local enabled = false", "lua"), true, "before diff syntax highlighted")
 eq(has_syntax_highlight(vim.api.nvim_win_get_buf(state.windows.diff_after), "local enabled = true", "lua"), true, "after diff syntax highlighted")
 eq(has_syntax_at_text_start(vim.api.nvim_win_get_buf(state.windows.code), "local enabled = false", "lua"), true, "before diff first character highlighted")

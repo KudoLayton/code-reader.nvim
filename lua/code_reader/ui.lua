@@ -292,13 +292,15 @@ local function apply_diff_cell_highlight(buf, line_index, cell, gutter_width, in
 
   local line_hl = diff_line_hl(cell.kind)
   if line_hl then
-    vim.api.nvim_buf_set_extmark(buf, namespace, line_index, 0, {
-      line_hl_group = line_hl,
-    })
+    if cell.kind == "blank" then
+      vim.api.nvim_buf_set_extmark(buf, namespace, line_index, 0, {
+        line_hl_group = line_hl,
+      })
+    else
+      add_line_background(buf, line_index, line_hl)
+    end
   elseif in_focus and cell.kind == "context" then
-    vim.api.nvim_buf_set_extmark(buf, namespace, line_index, 0, {
-      line_hl_group = "CodeReaderActiveLine",
-    })
+    add_line_background(buf, line_index, "CodeReaderActiveLine")
   end
 
   if cell.kind == "modified" then
