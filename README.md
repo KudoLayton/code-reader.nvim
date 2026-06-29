@@ -95,6 +95,19 @@ Inside the explanation panel, `[r` and `]r` move between steps. Press `<CR>` on 
 
 Press `<CR>` on an internal step link or a `treesitter://` symbol link in the explanation panel to activate it.
 
+## Demo
+
+This repository includes an inert demo project under `demo/basic`. The demo files are shipped with the plugin, but they are not in Neovim auto-load directories and do not affect startup or runtime behavior unless opened explicitly.
+
+```powershell
+cd demo/basic
+nvim .
+```
+
+```vim
+:CodeReaderOpen .code_reader/walkthrough.md
+```
+
 ## Tests
 
 ```powershell
@@ -103,4 +116,5 @@ lua tests/links_spec.lua
 nvim --headless -u NONE -l tests/nvim_spec.lua
 nvim --headless -u NONE -l tests/open_spec.lua
 nvim --headless -u NONE -l tests/symbol_spec.lua
+nvim --headless -u NONE -l tests/demo_spec.lua
 ```
