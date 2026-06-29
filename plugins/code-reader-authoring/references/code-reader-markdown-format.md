@@ -18,7 +18,8 @@ version: 1
 - Separate every page or step with a line containing only `---`.
 - Put `<!-- code-reader: front-page -->` as the first non-empty line of the first section.
 - The front page explains the overall subject. Prefer covering the feature purpose, scope, high-level structure, main module roles, and the reading flow.
-- Use a Mermaid diagram on the front page when it clarifies feature structure or execution flow.
+- Use Mermaid diagrams on the front page or individual steps when they clarify structure, control flow, data flow, or hunk impact.
+- Prefer plain prose or lists instead of Mermaid when the user disabled Mermaid rendering or `:checkhealth code_reader` reports that Node, npm, or `beautiful-mermaid` is unavailable.
 - Do not put `Source:` or `Diff:` references on the front page. Put references on concrete explanation steps.
 - Use numeric heading ids for steps, such as `# 1. Request lifecycle` and `## 1.1. Parse request`.
 - Use `[[step-id]]` or `[[step-id|label]]` only for links to existing steps in the same explanation.
@@ -41,6 +42,7 @@ version: 1
 - Add `diff: ./change.diff` in frontmatter. Resolve it relative to the markdown file.
 - The front page should summarize the change set: purpose, behavioral impact, affected files or modules, and suggested review flow.
 - Explain individual hunks in step sections, not on the front page.
+- Use step-level Mermaid diagrams only when they make a specific hunk or cross-file relationship easier to review.
 - Each non-front-page step should include at least one diff reference.
 - Write diff references as `Diff: path#Hn`, where `Hn` is the file-local hunk number from the unified diff.
 - Prefer covering every hunk in the diff unless the user asks for a partial explanation.
