@@ -174,6 +174,13 @@ vim.fn.writefile({
   "Diff: `src/app.lua#H2`",
   "",
   "The name result changes.",
+  "",
+  "---",
+  "# 3. Toggle neighborhood",
+  "",
+  "Diff: `src/app.lua#H1@new:padding=1`",
+  "",
+  "Show one line around the first hunk.",
 }, explanation_file)
 
 vim.cmd("edit " .. vim.fn.fnameescape(source_file))
@@ -240,6 +247,17 @@ for _, mark in ipairs(before_marks) do
   end
 end
 eq(has_word_mark, true, "modified word highlight")
+
+code_reader.goto_step(4)
+local range_explanation = table.concat(vim.api.nvim_buf_get_lines(state.buffers.explanation, 0, -1, false), "\n")
+contains(range_explanation, "Diff: src/app.lua#H1@new:padding=1", "range diff source header")
+contains(range_explanation, "After: `src/app.lua#L1-L6`", "range after label")
+local range_before = table.concat(vim.api.nvim_buf_get_lines(vim.api.nvim_win_get_buf(state.windows.code), 0, -1, false), "\n")
+local range_after = table.concat(vim.api.nvim_buf_get_lines(vim.api.nvim_win_get_buf(state.windows.diff_after), 0, -1, false), "\n")
+contains(range_before, "local enabled = false", "range before content")
+contains(range_after, "local enabled = true", "range after content")
+contains(range_after, "return M", "range includes trailing padding")
+eq(range_after:find('return "new"', 1, true), nil, "range excludes unrelated hunk")
 
 vim.fn.writefile({
   "local M = {}",

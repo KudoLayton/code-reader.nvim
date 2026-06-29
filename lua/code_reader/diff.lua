@@ -160,6 +160,21 @@ local function replace_at(lines, start_line, remove_count, replacement)
   return result
 end
 
+local function apply_hunk(hunk, current_lines, direction)
+  local result = {}
+  for _, line in ipairs(current_lines or {}) do
+    table.insert(result, line)
+  end
+
+  local expected = direction == "forward" and hunk_before_lines(hunk) or hunk_after_lines(hunk)
+  local replacement = direction == "forward" and hunk_after_lines(hunk) or hunk_before_lines(hunk)
+  local start_line = direction == "forward" and hunk.old_start or hunk.new_start
+  if not matches_at(result, start_line, expected) then
+    return nil
+  end
+  return replace_at(result, start_line, #expected, replacement)
+end
+
 local function apply_all(file, current_lines, direction)
   local result = {}
   for _, line in ipairs(current_lines or {}) do
@@ -192,6 +207,37 @@ local function count_matching_hunks(file, current_lines)
     end
   end
   return count
+end
+
+function M.analyze_hunk(file, hunk, current_lines)
+  current_lines = current_lines or {}
+  if not file or not hunk then
+    return { status = "missing", before_lines = current_lines, after_lines = current_lines }
+  end
+
+  local after_lines = apply_hunk(hunk, current_lines, "forward")
+  if after_lines then
+    return {
+      status = "applies",
+      before_lines = current_lines,
+      after_lines = after_lines,
+    }
+  end
+
+  local before_lines = apply_hunk(hunk, current_lines, "reverse")
+  if before_lines then
+    return {
+      status = "already-applied",
+      before_lines = before_lines,
+      after_lines = current_lines,
+    }
+  end
+
+  return {
+    status = "stale",
+    before_lines = current_lines,
+    after_lines = current_lines,
+  }
 end
 
 function M.analyze_file(file, current_lines)
@@ -267,6 +313,42 @@ function M.hunk_ref_label(file, hunk)
     hunk.new_start,
     hunk.new_end
   )
+end
+
+function M.diff_ref_label(diff_ref)
+  if not diff_ref then
+    return "none"
+  end
+  local label = diff_ref.path .. "#" .. diff_ref.hunk_id
+  if diff_ref.side then
+    label = label .. "@" .. diff_ref.side
+    if diff_ref.padding then
+      label = label .. ":padding=" .. tostring(diff_ref.padding)
+    elseif diff_ref.start_bound and diff_ref.end_bound then
+      local function bound_text(bound)
+        if bound.mode == "relative" then
+          local sign = bound.value >= 0 and "+" or ""
+          return "L(" .. sign .. tostring(bound.value) .. ")"
+        end
+        return "L" .. tostring(bound.value)
+      end
+      label = label .. ":" .. bound_text(diff_ref.start_bound) .. "-" .. bound_text(diff_ref.end_bound)
+    end
+  end
+  return label
+end
+
+function M.range_ref_label(file, hunk, diff_ref)
+  if not (file and hunk and diff_ref and diff_ref.side) then
+    return M.hunk_ref_label(file, hunk)
+  end
+  local render = require("code_reader.diff_render")
+  local range = render.resolve_hunk_range(hunk, diff_ref.side, diff_ref)
+  if not range then
+    return M.hunk_ref_label(file, hunk)
+  end
+  local prefix = diff_ref.side == "old" and "Before" or "After"
+  return string.format("%s: `%s#L%d-L%d`", prefix, file.path, range.start_line, range.end_line)
 end
 
 return M

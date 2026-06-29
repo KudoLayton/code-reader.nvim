@@ -136,4 +136,47 @@ eq(unrelated_model.summary.modified, 0, "unrelated modified count")
 eq(unrelated_model.summary.deleted, 1, "unrelated deleted count")
 eq(unrelated_model.summary.added, 1, "unrelated added count")
 
+local range = render.resolve_hunk_range(hunk, "new", {
+  start_bound = { mode = "relative", value = -1 },
+  end_bound = { mode = "relative", value = 1 },
+})
+eq(range.start_line, 1, "relative range start")
+eq(range.end_line, 10, "relative range end")
+
+local window_model = render.render_window(
+  parsed.files[1],
+  {
+    "header",
+    "local steps = {",
+    '  "validate",',
+    '  "render",',
+    "}",
+    "",
+    "local obsolete = true",
+    "local status = status_line(200)",
+    "",
+    "footer",
+  },
+  {
+    "header",
+    "local steps = {",
+    '  "validate",',
+    '  "parse",',
+    '  "render",',
+    "}",
+    "",
+    'table.insert(events, "created")',
+    "local status = status_line(201)",
+    "",
+    "footer",
+  },
+  hunk,
+  { side = "new", padding = 2 }
+)
+local window_before = table.concat(window_model.before_lines, "\n")
+local window_after = table.concat(window_model.after_lines, "\n")
+ok(window_before:find("local steps = {", 1, true) ~= nil, "window clamps leading padding")
+ok(window_after:find("footer", 1, true) ~= nil, "window includes trailing padding")
+ok(window_after:find('table.insert(events, "created")', 1, true) ~= nil, "window includes hunk change")
+
 print("diff_render_spec: ok")

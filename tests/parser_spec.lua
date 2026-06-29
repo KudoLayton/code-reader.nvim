@@ -108,6 +108,10 @@ Explain the change.
 # 1. Toggle flag
 
 Diff: `src/app.lua#H2`
+
+Diff: `src/app.lua#H1@old:L(-1)-L22`
+Diff: `src/app.lua#H1@new:padding=2`
+Diff: `src/app.lua#H1@b:L-1-L22`
 ]]
 
 local diff_doc = parser.parse(diff_sample, { path = ".code_reader/diffs/changes.md" })
@@ -115,5 +119,14 @@ eq(diff_doc.frontmatter.type, "code-reader-diff", "diff frontmatter type")
 eq(diff_doc.frontmatter.diff, "./changes.diff", "diff frontmatter path")
 eq(diff_doc.steps[2].diff_refs[1].path, "src/app.lua", "diff ref path")
 eq(diff_doc.steps[2].diff_refs[1].hunk_id, "H2", "diff ref hunk")
+eq(diff_doc.steps[2].diff_refs[2].side, "old", "diff ref old side")
+eq(diff_doc.steps[2].diff_refs[2].start_bound.mode, "relative", "diff ref relative start")
+eq(diff_doc.steps[2].diff_refs[2].start_bound.value, -1, "diff ref relative start value")
+eq(diff_doc.steps[2].diff_refs[2].end_bound.mode, "absolute", "diff ref absolute end")
+eq(diff_doc.steps[2].diff_refs[2].end_bound.value, 22, "diff ref absolute end value")
+eq(diff_doc.steps[2].diff_refs[3].side, "new", "diff ref padding side")
+eq(diff_doc.steps[2].diff_refs[3].padding, 2, "diff ref padding")
+eq(diff_doc.steps[2].diff_refs[4].side, "new", "diff ref alias side")
+eq(diff_doc.steps[2].diff_refs[4].start_bound.mode, "relative", "diff ref shorthand relative start")
 
 print("parser_spec: ok")

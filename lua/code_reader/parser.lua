@@ -177,22 +177,113 @@ local function parse_sources(lines)
   return sources
 end
 
-local function add_diff_ref(diff_refs, seen, path, hunk_id)
+local function normalize_diff_side(side)
+  side = side and side:lower() or nil
+  if side == "a" then
+    return "old"
+  end
+  if side == "b" then
+    return "new"
+  end
+  if side == "old" or side == "new" then
+    return side
+  end
+  return nil
+end
+
+local function parse_diff_bound(value)
+  value = value or ""
+  local parenthesized = value:match("^%(([%+%-]?%d+)%)$")
+  value = parenthesized or value
+  local number = tonumber(value)
+  if not number then
+    return nil
+  end
+  if value:sub(1, 1) == "+" or value:sub(1, 1) == "-" then
+    return { mode = "relative", value = number }
+  end
+  return { mode = "absolute", value = number }
+end
+
+local function parse_diff_range(value)
+  if not value then
+    return nil
+  end
+
+  local body = value:match("^L(.+)$")
+  if not body then
+    return nil, nil
+  end
+
+  local start_text, end_text = body:match("^(%b())%-L(.+)$")
+  if not start_text then
+    start_text, end_text = body:match("^([%+%-]%d+)%-L(.+)$")
+  end
+  if not start_text then
+    start_text, end_text = body:match("^(%d+)%-L(.+)$")
+  end
+  if not start_text then
+    local bound = parse_diff_bound(body)
+    return bound, bound
+  end
+
+  return parse_diff_bound(start_text), parse_diff_bound(end_text)
+end
+
+local function parse_diff_modifier(ref, side, value)
+  local normalized_side = normalize_diff_side(side)
+  if not normalized_side then
+    return
+  end
+
+  ref.side = normalized_side
+  local padding = value and (value:match("^padding=(%d+)$") or value:match("^pad=(%d+)$"))
+  if padding then
+    ref.padding = tonumber(padding)
+    return
+  end
+
+  local start_bound, end_bound = parse_diff_range(value)
+  if start_bound and end_bound then
+    ref.start_bound = start_bound
+    ref.end_bound = end_bound
+  end
+end
+
+local function diff_ref_key(ref)
+  local parts = { ref.path, ref.hunk_id, ref.side or "" }
+  if ref.padding then
+    table.insert(parts, "padding=" .. tostring(ref.padding))
+  end
+  if ref.start_bound then
+    table.insert(parts, ref.start_bound.mode .. tostring(ref.start_bound.value))
+  end
+  if ref.end_bound then
+    table.insert(parts, ref.end_bound.mode .. tostring(ref.end_bound.value))
+  end
+  return table.concat(parts, "#")
+end
+
+local function add_diff_ref(diff_refs, seen, path, hunk_id, side, modifier)
   if not path or not hunk_id then
     return
   end
 
   path = path:gsub("\\", "/")
   hunk_id = hunk_id:upper()
-  local key = path .. "#" .. hunk_id
+  local ref = {
+    path = path,
+    hunk_id = hunk_id,
+  }
+  if side and modifier then
+    parse_diff_modifier(ref, side, modifier)
+  end
+  local key = diff_ref_key(ref)
   if seen[key] then
     return
   end
 
-  table.insert(diff_refs, {
-    path = path,
-    hunk_id = hunk_id,
-  })
+  table.insert(diff_refs, ref)
   seen[key] = true
 end
 
@@ -201,10 +292,15 @@ local function parse_diff_refs(lines)
   local seen = {}
 
   for _, line in ipairs(lines) do
-    for path, hunk_id in line:gmatch("([%w%._%-/%\\]+)#(H%d+)") do
+    for path, hunk_id, side, modifier in line:gmatch("([%w%._%-/%\\]+)#(H%d+)@([%w]+):([^%s`%]]+)") do
+      add_diff_ref(diff_refs, seen, path, hunk_id, side, modifier)
+    end
+    local masked = line:gsub("[%w%._%-/%\\]+#H%d+@[%w]+:[^%s`%]]+", "")
+
+    for path, hunk_id in masked:gmatch("([%w%._%-/%\\]+)#(H%d+)") do
       add_diff_ref(diff_refs, seen, path, hunk_id)
     end
-    for path, hunk_number in line:gmatch("([%w%._%-/%\\]+)#h(%d+)") do
+    for path, hunk_number in masked:gmatch("([%w%._%-/%\\]+)#h(%d+)") do
       add_diff_ref(diff_refs, seen, path, "H" .. hunk_number)
     end
   end

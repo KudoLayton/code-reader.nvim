@@ -205,10 +205,7 @@ local function read_source_lines(path)
 end
 
 local function diff_ref_label(diff_ref)
-  if not diff_ref then
-    return "none"
-  end
-  return diff_ref.path .. "#" .. diff_ref.hunk_id
+  return diff.diff_ref_label(diff_ref)
 end
 
 local function find_diff_target(state, diff_ref)
@@ -258,6 +255,21 @@ local function analyze_diff_file(state, file)
     return { status = "missing", before_lines = {}, after_lines = {} }
   end
   return diff.analyze_file(file, lines)
+end
+
+local function analyze_diff_target(state, file, hunk, diff_ref)
+  if diff_ref and diff_ref.side then
+    if not file then
+      return { status = "missing", before_lines = {}, after_lines = {} }
+    end
+    local path = source.resolve_path({ path = file.path }, { root = state.root })
+    local lines = read_source_lines(path)
+    if not lines then
+      return { status = "missing", before_lines = {}, after_lines = {} }
+    end
+    return diff.analyze_hunk(file, hunk, lines)
+  end
+  return analyze_diff_file(state, file)
 end
 
 local function diff_view_label(analysis)
@@ -469,6 +481,7 @@ local function diff_coverage(state)
   local explained = 0
   local explained_hunks = 0
   local seen = {}
+  local completed = {}
   local sections = {}
 
   for _, step in ipairs(state.doc.steps or {}) do
@@ -478,12 +491,35 @@ local function diff_coverage(state)
       for _, diff_ref in ipairs(step.diff_refs or {}) do
         local file, hunk = find_diff_target(state, diff_ref)
         if file and hunk then
-          section_lines = section_lines + hunk.changed_lines
+          local changed_lines = hunk.changed_lines
+          if diff_ref.side then
+            local range = diff_render.resolve_hunk_range(hunk, diff_ref.side, diff_ref)
+            changed_lines = 0
+            if range then
+              local hunk_model = diff_render.render_hunk(hunk)
+              for _, row in ipairs(hunk_model.rows or {}) do
+                local cell = diff_ref.side == "old" and row.before or row.after
+                if cell
+                  and cell.line_no
+                  and cell.line_no >= range.start_line
+                  and cell.line_no <= range.end_line
+                  and cell.kind ~= "context"
+                  and cell.kind ~= "blank"
+                then
+                  changed_lines = changed_lines + 1
+                end
+              end
+            end
+          end
+          section_lines = section_lines + changed_lines
           section_hunks = section_hunks + 1
           local key = file.path .. "#" .. hunk.id
           if not seen[key] then
-            seen[key] = true
-            explained = explained + hunk.changed_lines
+            seen[key] = 0
+          end
+          seen[key] = math.min(hunk.changed_lines, seen[key] + changed_lines)
+          if seen[key] == hunk.changed_lines and not completed[key] then
+            completed[key] = true
             explained_hunks = explained_hunks + 1
           end
         end
@@ -496,6 +532,10 @@ local function diff_coverage(state)
         })
       end
     end
+  end
+
+  for _, covered in pairs(seen) do
+    explained = explained + covered
   end
 
   return {
@@ -627,7 +667,7 @@ function M.render_explanation(state)
   if is_diff_mode(state) then
     local diff_ref = step.diff_refs and step.diff_refs[1] or nil
     local file, hunk = find_diff_target(state, diff_ref)
-    local analysis = analyze_diff_file(state, file)
+    local analysis = analyze_diff_target(state, file, hunk, diff_ref)
     local lines = {
       "# " .. step.id .. " " .. step.title,
       "",
@@ -638,8 +678,8 @@ function M.render_explanation(state)
     }
 
     if file and hunk then
-      table.insert(lines, diff.hunk_ref_label(file, hunk))
-      table.insert(lines, "Rendering: " .. diff_render.summary_label(diff_render.render_hunk(hunk).summary))
+      table.insert(lines, diff.range_ref_label(file, hunk, diff_ref))
+      table.insert(lines, "Rendering: " .. diff_render.summary_label(diff_render.render_hunk(hunk, diff_ref).summary))
     end
     table.insert(lines, "")
 
@@ -780,16 +820,19 @@ function M.render_source(state)
       return
     end
 
-    local analysis = analyze_diff_file(state, file)
+    local analysis = analyze_diff_target(state, file, hunk, diff_ref)
     local model = nil
     local cursor_line = 1
     local full_view = analysis.status == "applies" or analysis.status == "already-applied"
 
-    if full_view then
+    if full_view and diff_ref and diff_ref.side then
+      model = diff_render.render_window(file, analysis.before_lines, analysis.after_lines, hunk, diff_ref)
+      cursor_line = model.focus_start or 1
+    elseif full_view then
       model = diff_render.render_file(file, analysis.before_lines, analysis.after_lines, hunk)
       cursor_line = model.focus_start or 1
     else
-      model = diff_render.render_hunk(hunk)
+      model = diff_render.render_hunk(hunk, diff_ref)
       cursor_line = 1
     end
 
