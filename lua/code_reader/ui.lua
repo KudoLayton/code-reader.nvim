@@ -160,6 +160,74 @@ local function valid_buf(buf)
   return buf and vim.api.nvim_buf_is_valid(buf)
 end
 
+local function close_diff_after_window(state)
+  local win = state.windows and state.windows.diff_after
+  if valid_win(win) then
+    pcall(vim.api.nvim_win_close, win, true)
+  end
+  if state.windows then
+    state.windows.diff_after = nil
+  end
+end
+
+local function restore_previous_win(previous_win)
+  if valid_win(previous_win) then
+    pcall(vim.api.nvim_set_current_win, previous_win)
+  end
+end
+
+local function ensure_code_window(state)
+  state.windows = state.windows or {}
+  if valid_win(state.windows.code) then
+    return true
+  end
+
+  local previous_win = vim.api.nvim_get_current_win()
+  local anchor = valid_win(state.windows.explanation) and state.windows.explanation
+    or valid_win(state.windows.toc) and state.windows.toc
+    or previous_win
+  if valid_win(anchor) then
+    vim.api.nvim_set_current_win(anchor)
+  end
+
+  vim.cmd("topleft vsplit")
+  state.windows.code = vim.api.nvim_get_current_win()
+  restore_previous_win(previous_win)
+  return valid_win(state.windows.code)
+end
+
+local function ensure_diff_after_window(state)
+  if not ensure_code_window(state) then
+    return false
+  end
+  if valid_win(state.windows.diff_after) then
+    return true
+  end
+
+  local previous_win = vim.api.nvim_get_current_win()
+  vim.api.nvim_set_current_win(state.windows.code)
+  vim.cmd("rightbelow vsplit")
+  state.windows.diff_after = vim.api.nvim_get_current_win()
+  restore_previous_win(previous_win)
+  return valid_win(state.windows.diff_after)
+end
+
+local function diff_cell_has_content(cell)
+  return cell and cell.kind ~= "blank" and ((cell.text or "") ~= "" or (cell.marker or "") ~= "")
+end
+
+local function diff_model_sides(model)
+  local sides = {
+    before = false,
+    after = false,
+  }
+  for _, row in ipairs((model and model.rows) or {}) do
+    sides.before = sides.before or diff_cell_has_content(row.before)
+    sides.after = sides.after or diff_cell_has_content(row.after)
+  end
+  return sides
+end
+
 local function source_ref_label(source_ref)
   if not source_ref then
     return "none"
@@ -643,9 +711,6 @@ function M.open_layout(state)
     state.buffers.diff_after = create_scratch("code-reader://diff-after", "diff")
     vim.api.nvim_set_option_value("bufhidden", "hide", { buf = state.buffers.diff_before })
     vim.api.nvim_set_option_value("bufhidden", "hide", { buf = state.buffers.diff_after })
-    vim.cmd("vsplit")
-    state.windows.diff_after = vim.api.nvim_get_current_win()
-    vim.api.nvim_win_set_buf(state.windows.diff_after, state.buffers.diff_after)
   end
   state.buffers.explanation = create_scratch("code-reader://explanation", "markdown")
   state.buffers.toc = create_scratch("code-reader://toc", "code_reader_toc")
@@ -778,9 +843,13 @@ end
 
 function M.render_front_page(state)
   local step = state.doc.steps[state.current]
-  if not is_front_page(step) or not valid_win(state.windows.code) or not valid_buf(state.buffers.front_page) then
+  if not is_front_page(step) or not valid_buf(state.buffers.front_page) then
     return
   end
+  if not ensure_code_window(state) then
+    return
+  end
+  close_diff_after_window(state)
 
   local lines = {
     "# " .. step.title,
@@ -836,7 +905,7 @@ function M.render_source(state)
   end
 
   if is_diff_mode(state) then
-    if not (valid_win(state.windows.code) and valid_win(state.windows.diff_after)) then
+    if not (valid_buf(state.buffers.diff_before) and valid_buf(state.buffers.diff_after)) then
       return
     end
 
@@ -863,14 +932,31 @@ function M.render_source(state)
 
     set_lines(state.buffers.diff_before, model.before_lines)
     set_lines(state.buffers.diff_after, model.after_lines)
-    vim.api.nvim_win_set_buf(state.windows.code, state.buffers.diff_before)
-    vim.api.nvim_win_set_buf(state.windows.diff_after, state.buffers.diff_after)
 
     local before_count = math.max(1, vim.api.nvim_buf_line_count(state.buffers.diff_before))
     local after_count = math.max(1, vim.api.nvim_buf_line_count(state.buffers.diff_after))
-    cursor_line = math.max(1, math.min(cursor_line, math.min(before_count, after_count)))
-    vim.api.nvim_win_set_cursor(state.windows.code, { cursor_line, 0 })
-    vim.api.nvim_win_set_cursor(state.windows.diff_after, { cursor_line, 0 })
+    local sides = diff_model_sides(model)
+    local primary_buf = sides.before and state.buffers.diff_before or state.buffers.diff_after
+    local primary_count = sides.before and before_count or after_count
+
+    if sides.before and sides.after then
+      if not ensure_diff_after_window(state) then
+        return
+      end
+      vim.api.nvim_win_set_buf(state.windows.code, state.buffers.diff_before)
+      vim.api.nvim_win_set_buf(state.windows.diff_after, state.buffers.diff_after)
+      cursor_line = math.max(1, math.min(cursor_line, math.min(before_count, after_count)))
+      vim.api.nvim_win_set_cursor(state.windows.code, { cursor_line, 0 })
+      vim.api.nvim_win_set_cursor(state.windows.diff_after, { cursor_line, 0 })
+    else
+      if not ensure_code_window(state) then
+        return
+      end
+      close_diff_after_window(state)
+      cursor_line = math.max(1, math.min(cursor_line, primary_count))
+      vim.api.nvim_win_set_buf(state.windows.code, primary_buf)
+      vim.api.nvim_win_set_cursor(state.windows.code, { cursor_line, 0 })
+    end
 
     apply_diff_highlights(model, state.buffers.diff_before, state.buffers.diff_after, state)
     syntax.highlight_diff(state.buffers.diff_before, model.rows, "before", file.path, model.gutter_width or 0)
@@ -878,9 +964,13 @@ function M.render_source(state)
     return
   end
 
-  if not step or not step.sources[1] or not valid_win(state.windows.code) then
+  if not step or not step.sources[1] then
     return
   end
+  if not ensure_code_window(state) then
+    return
+  end
+  close_diff_after_window(state)
 
   local source_ref = step.sources[1]
   local path = source.resolve_path(source_ref, { root = state.root })
@@ -937,11 +1027,12 @@ function M.restore_code_buffer(state)
   local code_buf = state.buffers and state.buffers.code
   local front_page_buf = state.buffers and state.buffers.front_page
   local diff_before_buf = state.buffers and state.buffers.diff_before
+  local diff_after_buf = state.buffers and state.buffers.diff_after
   if not (valid_win(code_win) and valid_buf(code_buf)) then
     return
   end
   local current_buf = vim.api.nvim_win_get_buf(code_win)
-  if current_buf == front_page_buf or current_buf == diff_before_buf then
+  if current_buf == front_page_buf or current_buf == diff_before_buf or current_buf == diff_after_buf then
     pcall(vim.api.nvim_win_set_buf, code_win, code_buf)
   end
 end

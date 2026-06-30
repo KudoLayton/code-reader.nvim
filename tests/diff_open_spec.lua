@@ -11,6 +11,10 @@ local function contains(text, needle, label)
   eq(text:find(needle, 1, true) ~= nil, true, label)
 end
 
+local function valid_win(win)
+  return win and vim.api.nvim_win_is_valid(win)
+end
+
 local function has_line_highlight(buf, line_text, group)
   local lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
   for index, line in ipairs(lines) do
@@ -187,6 +191,22 @@ vim.fn.writefile({
   "-  return \"old\"",
   "+  return \"new\"",
   " end",
+  "diff --git a/src/created.lua b/src/created.lua",
+  "new file mode 100644",
+  "index 0000000..3333333",
+  "--- /dev/null",
+  "+++ b/src/created.lua",
+  "@@ -0,0 +1,2 @@",
+  "+local created = true",
+  "+return created",
+  "diff --git a/src/obsolete.lua b/src/obsolete.lua",
+  "deleted file mode 100644",
+  "index 4444444..0000000",
+  "--- a/src/obsolete.lua",
+  "+++ /dev/null",
+  "@@ -1,2 +0,0 @@",
+  "-local obsolete = true",
+  "-return obsolete",
 }, diff_file)
 
 vim.fn.writefile({
@@ -221,6 +241,20 @@ vim.fn.writefile({
   "Diff: `src/app.lua#H1@new:padding=1`",
   "",
   "Show one line around the first hunk.",
+  "",
+  "---",
+  "# 4. Add created module",
+  "",
+  "Diff: `src/created.lua#H1`",
+  "",
+  "The module is added.",
+  "",
+  "---",
+  "# 5. Remove obsolete module",
+  "",
+  "Diff: `src/obsolete.lua#H1`",
+  "",
+  "The module is deleted.",
 }, explanation_file)
 
 vim.cmd("edit " .. vim.fn.fnameescape(source_file))
@@ -230,15 +264,16 @@ vim.cmd("CodeReaderOpen " .. vim.fn.fnameescape(explanation_file))
 
 local state = code_reader.state()
 eq(state.doc.frontmatter.type, "code-reader-diff", "diff doc type")
-eq(vim.api.nvim_win_is_valid(state.windows.diff_after), true, "diff after window valid")
+eq(valid_win(state.windows.diff_after), nil, "front page starts as one-column diff view")
 
 local front_page = table.concat(vim.api.nvim_buf_get_lines(vim.api.nvim_win_get_buf(state.windows.code), 0, -1, false), "\n")
 contains(front_page, "## Diff Coverage", "coverage heading")
-contains(front_page, "Explained changes: 5 / 5 (100.0%)", "coverage ratio")
-contains(front_page, "Explained hunks: 2 / 2", "hunk coverage")
+contains(front_page, "Explained changes: 9 / 9 (100.0%)", "coverage ratio")
+contains(front_page, "Explained hunks: 4 / 4", "hunk coverage")
 eq(has_highlight(vim.api.nvim_win_get_buf(state.windows.code), "[[1|Toggle flag]]", "CodeReaderStepLink"), true, "diff front page step link highlighted")
 
 code_reader.next()
+eq(valid_win(state.windows.diff_after), true, "two-sided diff creates after window")
 local explanation = table.concat(vim.api.nvim_buf_get_lines(state.buffers.explanation, 0, -1, false), "\n")
 contains(explanation, "Diff: src/app.lua#H1", "diff source header")
 contains(explanation, "View: full file side-by-side", "full view header")
@@ -365,6 +400,35 @@ contains(stale_before, "~ local enabled = false", "stale before modified marker"
 contains(stale_after, "+ local mode = \"fast\"", "stale after add marker")
 eq(has_syntax_highlight(vim.api.nvim_win_get_buf(state.windows.code), "local enabled = false", "lua"), true, "stale before syntax highlighted")
 eq(has_syntax_highlight(vim.api.nvim_win_get_buf(state.windows.diff_after), "local mode = \"fast\"", "lua"), true, "stale after syntax highlighted")
+
+code_reader.goto_step(1)
+eq(valid_win(state.windows.diff_after), nil, "front page closes diff after window")
+
+code_reader.goto_step(5)
+eq(valid_win(state.windows.diff_after), nil, "added file renders as one-column diff view")
+local added_text = table.concat(vim.api.nvim_buf_get_lines(vim.api.nvim_win_get_buf(state.windows.code), 0, -1, false), "\n")
+contains(added_text, "+ local created = true", "added file content in primary code window")
+
+code_reader.goto_step(6)
+eq(valid_win(state.windows.diff_after), nil, "deleted file renders as one-column diff view")
+local deleted_text = table.concat(vim.api.nvim_buf_get_lines(vim.api.nvim_win_get_buf(state.windows.code), 0, -1, false), "\n")
+contains(deleted_text, "- local obsolete = true", "deleted file content in primary code window")
+
+code_reader.goto_step(2)
+local closed_after = state.windows.diff_after
+vim.api.nvim_win_close(closed_after, true)
+eq(valid_win(closed_after), false, "test closed diff after window")
+code_reader.goto_step(3)
+eq(valid_win(state.windows.diff_after), true, "two-sided diff recreates closed after window")
+
+local closed_code = state.windows.code
+vim.api.nvim_win_close(closed_code, true)
+eq(valid_win(closed_code), false, "test closed primary code window")
+code_reader.goto_step(5)
+eq(valid_win(state.windows.code), true, "one-sided diff recreates closed primary code window")
+eq(valid_win(state.windows.diff_after), nil, "one-sided recovery keeps diff after closed")
+local recovered_added = table.concat(vim.api.nvim_buf_get_lines(vim.api.nvim_win_get_buf(state.windows.code), 0, -1, false), "\n")
+contains(recovered_added, "+ local created = true", "recovered primary code window content")
 
 vim.cmd("CodeReaderClose")
 eq(vim.api.nvim_get_current_buf(), initial_code_buf, "initial code buffer restored")
