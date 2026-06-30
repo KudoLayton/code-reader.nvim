@@ -982,11 +982,16 @@ function M.render_source(state)
       if not ensure_diff_after_window(state) then
         return
       end
+      clear_diff_window_bindings(state)
       vim.api.nvim_win_set_buf(state.windows.code, state.buffers.diff_before)
       vim.api.nvim_win_set_buf(state.windows.diff_after, state.buffers.diff_after)
       cursor_line = math.max(1, math.min(cursor_line, math.min(before_count, after_count)))
       vim.api.nvim_win_set_cursor(state.windows.code, { cursor_line, 0 })
       vim.api.nvim_win_set_cursor(state.windows.diff_after, { cursor_line, 0 })
+      reveal_window_line(state.windows.code, "zz")
+      reveal_window_line(state.windows.diff_after, "zz")
+      set_window_bindings(state.windows.code, true)
+      set_window_bindings(state.windows.diff_after, true)
     else
       if not ensure_code_window(state) then
         return
@@ -1009,6 +1014,7 @@ function M.render_source(state)
   if not ensure_code_window(state) then
     return
   end
+  clear_diff_window_bindings(state)
   close_diff_after_window(state)
 
   local source_ref = step.sources[1]

@@ -15,6 +15,21 @@ local function valid_win(win)
   return win and vim.api.nvim_win_is_valid(win)
 end
 
+local function window_view(win)
+  local current = vim.api.nvim_get_current_win()
+  vim.api.nvim_set_current_win(win)
+  local view = vim.fn.winsaveview()
+  vim.api.nvim_set_current_win(current)
+  return view
+end
+
+local function sync_window_to_line(win, line)
+  vim.api.nvim_set_current_win(win)
+  vim.api.nvim_win_set_cursor(win, { line, 0 })
+  vim.cmd("normal! zt")
+  vim.cmd("redraw")
+end
+
 local function has_line_highlight(buf, line_text, group)
   local lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
   for index, line in ipairs(lines) do
@@ -214,20 +229,23 @@ local diff_file = tmp .. "/.code_reader/diffs/change.diff"
 local explanation_file = tmp .. "/.code_reader/diffs/change.md"
 local log_file = tmp .. "/code-reader.log"
 
-vim.fn.writefile({
+local source_lines = {
   "local M = {}",
   "local enabled = false",
   "",
   "return M",
-  "",
-  "",
-  "",
+}
+for index = 5, 37 do
+  table.insert(source_lines, "-- filler " .. tostring(index))
+end
+vim.list_extend(source_lines, {
   "function M.name()",
   "  return \"old\"",
   "end",
-}, source_file)
+})
+vim.fn.writefile(source_lines, source_file)
 
-vim.fn.writefile({
+local diff_lines = {
   "diff --git a/src/app.lua b/src/app.lua",
   "index 1111111..2222222 100644",
   "--- a/src/app.lua",
@@ -239,7 +257,9 @@ vim.fn.writefile({
   "+local mode = \"fast\"",
   " ",
   " return M",
-  "@@ -8,3 +9,3 @@",
+}
+vim.list_extend(diff_lines, {
+  "@@ -38,3 +39,3 @@",
   " function M.name()",
   "-  return \"old\"",
   "+  return \"new\"",
@@ -260,7 +280,8 @@ vim.fn.writefile({
   "@@ -1,2 +0,0 @@",
   "-local obsolete = true",
   "-return obsolete",
-}, diff_file)
+})
+vim.fn.writefile(diff_lines, diff_file)
 
 vim.fn.writefile({
   "---",
@@ -339,7 +360,7 @@ contains(explanation, "View: full file side-by-side", "full view header")
 contains(explanation, "Status: applies", "applies header")
 contains(explanation, "Before: `src/app.lua#L1-L4`", "before range")
 contains(explanation, "After: `src/app.lua#L1-L5`", "after range")
-contains(explanation, "- Next: [[2|Rename value]] (↓8 src/app.lua#H2)", "diff next navigation position")
+contains(explanation, "- Next: [[2|Rename value]] (↓38 src/app.lua#H2)", "diff next navigation position")
 contains(explanation, "- Diff: `src/app.lua#H1`", "diff navigation source")
 eq(has_highlight(state.buffers.explanation, "Diff: src/app.lua#H1", "CodeReaderDiffTarget"), true, "diff header highlighted")
 eq(has_highlight(state.buffers.explanation, "- Diff: `src/app.lua#H1`", "CodeReaderDiffTarget"), true, "diff navigation highlighted")
@@ -368,6 +389,20 @@ local debug_log = table.concat(vim.fn.readfile(log_file), "\n")
 contains(debug_log, "syntax.diff", "debug log records diff syntax event")
 contains(debug_log, "path=src/app.lua", "debug log records diff path")
 contains(debug_log, "language=lua", "debug log records diff language")
+eq(vim.api.nvim_get_option_value("scrollbind", { win = state.windows.code }), true, "before diff scrollbind enabled")
+eq(vim.api.nvim_get_option_value("scrollbind", { win = state.windows.diff_after }), true, "after diff scrollbind enabled")
+eq(vim.api.nvim_get_option_value("cursorbind", { win = state.windows.code }), true, "before diff cursorbind enabled")
+eq(vim.api.nvim_get_option_value("cursorbind", { win = state.windows.diff_after }), true, "after diff cursorbind enabled")
+eq(vim.api.nvim_win_get_cursor(state.windows.code)[1], vim.api.nvim_win_get_cursor(state.windows.diff_after)[1], "initial diff cursors match")
+eq(window_view(state.windows.code).topline, window_view(state.windows.diff_after).topline, "initial diff toplines match")
+
+sync_window_to_line(state.windows.code, 30)
+eq(vim.api.nvim_win_get_cursor(state.windows.diff_after)[1], 30, "after diff cursor follows before")
+eq(window_view(state.windows.diff_after).topline, window_view(state.windows.code).topline, "after diff viewport follows before")
+
+sync_window_to_line(state.windows.diff_after, 3)
+eq(vim.api.nvim_win_get_cursor(state.windows.code)[1], 3, "before diff cursor follows after")
+eq(window_view(state.windows.code).topline, window_view(state.windows.diff_after).topline, "before diff viewport follows after")
 local missing_messages, missing_log = render_missing_language_notification()
 eq(#missing_messages, 1, "missing Tree-sitter parser notifies once per path")
 contains(missing_messages[1].message, "Tree-sitter parser is unavailable for cpp", "missing parser notification explains parser")
@@ -434,19 +469,22 @@ local hunk_only_after = table.concat(vim.api.nvim_buf_get_lines(vim.api.nvim_win
 contains(hunk_only_after, "local enabled = true", "selected hunk applied")
 contains(hunk_only_after, 'return "custom"', "selected hunk preserves unrelated current content")
 
-vim.fn.writefile({
+local applied_source_lines = {
   "local M = {}",
   "local enabled = true",
   "local mode = \"fast\"",
   "",
   "return M",
-  "",
-  "",
-  "",
+}
+for index = 5, 37 do
+  table.insert(applied_source_lines, "-- filler " .. tostring(index))
+end
+vim.list_extend(applied_source_lines, {
   "function M.name()",
   "  return \"new\"",
   "end",
-}, source_file)
+})
+vim.fn.writefile(applied_source_lines, source_file)
 code_reader.goto_step(2)
 local applied_explanation = table.concat(vim.api.nvim_buf_get_lines(state.buffers.explanation, 0, -1, false), "\n")
 contains(applied_explanation, "View: full file side-by-side", "already applied full view")
@@ -471,9 +509,13 @@ eq(has_syntax_highlight(vim.api.nvim_win_get_buf(state.windows.diff_after), "loc
 
 code_reader.goto_step(1)
 eq(valid_win(state.windows.diff_after), nil, "front page closes diff after window")
+eq(vim.api.nvim_get_option_value("scrollbind", { win = state.windows.code }), false, "front page clears primary scrollbind")
+eq(vim.api.nvim_get_option_value("cursorbind", { win = state.windows.code }), false, "front page clears primary cursorbind")
 
 code_reader.goto_step(5)
 eq(valid_win(state.windows.diff_after), nil, "added file renders as one-column diff view")
+eq(vim.api.nvim_get_option_value("scrollbind", { win = state.windows.code }), false, "one-sided diff clears primary scrollbind")
+eq(vim.api.nvim_get_option_value("cursorbind", { win = state.windows.code }), false, "one-sided diff clears primary cursorbind")
 local added_text = table.concat(vim.api.nvim_buf_get_lines(vim.api.nvim_win_get_buf(state.windows.code), 0, -1, false), "\n")
 contains(added_text, "+ local created = true", "added file content in primary code window")
 
