@@ -89,7 +89,7 @@ Open the markdown file with `:CodeReaderOpen`. Code Reader parses the referenced
 - If the full file cannot be compared but the current hunk can, Code Reader shows a full-file view with only the selected hunk applied. If that also fails, it falls back to the hunk-only side-by-side snippet.
 - Diff side-by-side views include old/new line-number gutters, `~`/`+`/`-`/`>` markers, moved-line detection, and inline highlights for modified spans.
 - Diff side-by-side views apply Tree-sitter syntax highlighting to the code portion when a parser is available for the changed file.
-- Focus mode also applies to full-file diff views: unrelated rows are dimmed while the current explanation hunk stays highlighted.
+- Focus mode also applies to full-file diff views: unrelated rows are dimmed while the current explanation hunk stays highlighted. Dimming is enabled by default and can be disabled with `dimming = false`.
 
 Symbol links must always name the source path:
 
@@ -126,6 +126,7 @@ Using lazy.nvim:
     "CodeReaderPrev",
     "CodeReaderGoto",
     "CodeReaderToggleFocus",
+    "CodeReaderToggleDimming",
     "CodeReaderClose",
   },
 }
@@ -144,12 +145,25 @@ Commands:
 - `:CodeReaderOpen [file]` opens the source, explanation, and TOC layout.
 - `:CodeReaderNext` and `:CodeReaderPrev` move between steps.
 - `:CodeReaderGoto {index}` jumps to a step by list index.
-- `:CodeReaderToggleFocus` toggles dimming for unrelated source lines.
+- `:CodeReaderToggleDimming` toggles dimming for non-focused source and diff lines.
+- `:CodeReaderToggleFocus` toggles legacy focus mode, which also affects dimming.
 - `:CodeReaderClose` closes the explanation and TOC views and clears Code Reader highlights.
 
 Inside the explanation panel, `[r` and `]r` move between steps. Press `<CR>` on links in the `Navigation` list to jump to related steps or open the source. Navigation links show source or diff movement hints such as `(↑3)`, `(↓8)`, `(↗ src/file.lua#L10-L20)`, or `(↓8 src/file.lua#H2)`. Press `q` in the explanation or TOC panel to close Code Reader.
 
 In the TOC panel, press `<CR>` to jump to the selected step. The explanation view and code view update together while focus stays in the TOC. Press `<CR>` on an internal step link or a `treesitter://` symbol link in the explanation panel to activate it.
+
+## Configuration
+
+Code Reader dims non-focused source and diff lines by default:
+
+```lua
+require("code_reader").setup({
+  dimming = true,
+})
+```
+
+Set `dimming = false` to keep the current explanation range highlighted without dimming the rest of the code. Use `require("code_reader").toggle_dimming()` to toggle dimming from Lua, or pass `true`/`false` to set it explicitly.
 
 ## Rendering
 

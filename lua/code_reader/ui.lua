@@ -352,6 +352,7 @@ local function apply_diff_highlights(model, before_buf, after_buf, state)
   local row_count = #(model.rows or {})
   local should_dim = state
     and state.focus
+    and state.dimming
     and row_count <= (state.options.max_dim_lines or 5000)
     and model.focus_start
     and model.focus_end
@@ -905,7 +906,7 @@ function M.render_source(state)
   for line = 1, line_count do
     if line >= start_line and line <= end_line then
       add_line_background(buf, line - 1, "CodeReaderActiveLine")
-    elseif state.focus and line_count <= (state.options.max_dim_lines or 5000) then
+    elseif state.focus and state.dimming and line_count <= (state.options.max_dim_lines or 5000) then
       vim.api.nvim_buf_add_highlight(buf, namespace, "CodeReaderDimLine", line - 1, 0, -1)
     end
   end

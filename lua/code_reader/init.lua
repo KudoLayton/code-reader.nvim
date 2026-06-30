@@ -10,6 +10,7 @@ local M = {}
 local state = {
   options = {
     focus = true,
+    dimming = true,
     max_dim_lines = 5000,
     mermaid = {
       enabled = true,
@@ -120,6 +121,7 @@ function M.setup(opts)
   opts = opts or {}
   state.options = vim.tbl_deep_extend("force", state.options, opts)
   state.focus = state.options.focus ~= false
+  state.dimming = state.options.dimming ~= false
 end
 
 function M.open(path)
@@ -157,6 +159,7 @@ function M.open(path)
   state.diff = diff_doc
   state.current = 1
   state.focus = state.options.focus ~= false
+  state.dimming = state.options.dimming ~= false
   state.toc_line_to_step = {}
 
   ui.open_layout(state)
@@ -192,6 +195,17 @@ function M.toggle_focus()
   state.focus = not state.focus
   ui.render(state)
   vim.notify("Code Reader: focus mode " .. (state.focus and "on" or "off"), vim.log.levels.INFO)
+end
+
+function M.toggle_dimming(enabled)
+  if enabled == nil then
+    state.dimming = not state.dimming
+  else
+    state.dimming = enabled ~= false
+  end
+  ui.render(state)
+  vim.notify("Code Reader: dimming " .. (state.dimming and "on" or "off"), vim.log.levels.INFO)
+  return state.dimming
 end
 
 function M.open_source()

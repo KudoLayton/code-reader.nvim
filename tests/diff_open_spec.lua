@@ -254,6 +254,13 @@ eq(has_syntax_at_text_start(vim.api.nvim_win_get_buf(state.windows.diff_after), 
 eq(has_highlight_at_text(vim.api.nvim_win_get_buf(state.windows.code), "local enabled = false", "false", "CodeReaderDiffWord"), true, "before diff word aligns to rendered text")
 eq(has_highlight_at_text(vim.api.nvim_win_get_buf(state.windows.diff_after), "local enabled = true", "true", "CodeReaderDiffWord"), true, "after diff word aligns to rendered text")
 
+vim.cmd("CodeReaderToggleDimming")
+eq(state.dimming, false, "dimming command disables diff dimming")
+eq(has_line_highlight(vim.api.nvim_win_get_buf(state.windows.code), 'return "old"', "CodeReaderDimLine"), false, "dimming command removes diff dimming")
+eq(has_line_highlight(vim.api.nvim_win_get_buf(state.windows.code), "local enabled = false", "CodeReaderDiffModify"), true, "focused diff highlight remains without dimming")
+eq(code_reader.toggle_dimming(true), true, "dimming api enables diff dimming")
+eq(has_line_highlight(vim.api.nvim_win_get_buf(state.windows.code), 'return "old"', "CodeReaderDimLine"), true, "dimming api restores diff dimming")
+
 code_reader.toggle_focus()
 eq(has_line_highlight(vim.api.nvim_win_get_buf(state.windows.code), 'return "old"', "CodeReaderDimLine"), false, "focus toggle removes diff dimming")
 code_reader.toggle_focus()
