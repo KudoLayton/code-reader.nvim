@@ -277,7 +277,17 @@ vim.list_extend(diff_lines, {
   "index 4444444..0000000",
   "--- a/src/obsolete.lua",
   "+++ /dev/null",
-  "@@ -1,2 +0,0 @@",
+  "@@ -1,12 +0,0 @@",
+  "-local keep_1 = true",
+  "-local keep_2 = true",
+  "-local keep_3 = true",
+  "-local keep_4 = true",
+  "-local keep_5 = true",
+  "-local keep_6 = true",
+  "-local keep_7 = true",
+  "-local keep_8 = true",
+  "-local keep_9 = true",
+  "-local keep_10 = true",
   "-local obsolete = true",
   "-return obsolete",
 })
@@ -326,7 +336,7 @@ vim.fn.writefile({
   "---",
   "# 5. Remove obsolete module",
   "",
-  "Diff: `src/obsolete.lua#H1`",
+  "Diff: `src/obsolete.lua#H1@old:L11-L12`",
   "",
   "The module is deleted.",
 }, explanation_file)
@@ -348,8 +358,8 @@ eq(valid_win(state.windows.diff_after), nil, "front page starts as one-column di
 
 local front_page = table.concat(vim.api.nvim_buf_get_lines(vim.api.nvim_win_get_buf(state.windows.code), 0, -1, false), "\n")
 contains(front_page, "## Diff Coverage", "coverage heading")
-contains(front_page, "Explained changes: 9 / 9 (100.0%)", "coverage ratio")
-contains(front_page, "Explained hunks: 4 / 4", "hunk coverage")
+contains(front_page, "Explained changes: 9 / 19 (47.4%)", "coverage ratio")
+contains(front_page, "Explained hunks: 3 / 4", "hunk coverage")
 eq(has_highlight(vim.api.nvim_win_get_buf(state.windows.code), "[[1|Toggle flag]]", "CodeReaderStepLink"), true, "diff front page step link highlighted")
 
 code_reader.next()
@@ -523,6 +533,8 @@ code_reader.goto_step(6)
 eq(valid_win(state.windows.diff_after), nil, "deleted file renders as one-column diff view")
 local deleted_text = table.concat(vim.api.nvim_buf_get_lines(vim.api.nvim_win_get_buf(state.windows.code), 0, -1, false), "\n")
 contains(deleted_text, "- local obsolete = true", "deleted file content in primary code window")
+eq(vim.api.nvim_win_get_cursor(state.windows.code)[1], 11, "deleted file range cursor moves to focused deletion")
+eq(window_view(state.windows.code).topline <= 11, true, "deleted file viewport reaches focused deletion")
 
 code_reader.goto_step(2)
 local closed_after = state.windows.diff_after

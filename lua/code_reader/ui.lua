@@ -266,6 +266,20 @@ local function diff_model_sides(model)
   return sides
 end
 
+local function single_diff_focus_line(model, side)
+  if model and model.focus_start then
+    return model.focus_start
+  end
+  local cell_key = side == "before" and "before" or "after"
+  for index, row in ipairs((model and model.rows) or {}) do
+    local cell = row[cell_key]
+    if cell and cell.kind ~= "blank" and cell.kind ~= "context" then
+      return index
+    end
+  end
+  return model and model.focus_start or 1
+end
+
 local function source_ref_label(source_ref)
   if not source_ref then
     return "none"
@@ -966,7 +980,7 @@ function M.render_source(state)
       cursor_line = model.focus_start or 1
     else
       model = diff_render.render_hunk(hunk, diff_ref)
-      cursor_line = 1
+      cursor_line = model.focus_start or 1
     end
 
     set_lines(state.buffers.diff_before, model.before_lines)
@@ -977,6 +991,7 @@ function M.render_source(state)
     local sides = diff_model_sides(model)
     local primary_buf = sides.before and state.buffers.diff_before or state.buffers.diff_after
     local primary_count = sides.before and before_count or after_count
+    local primary_side = sides.before and "before" or "after"
 
     if sides.before and sides.after then
       if not ensure_diff_after_window(state) then
@@ -997,9 +1012,10 @@ function M.render_source(state)
         return
       end
       close_diff_after_window(state)
-      cursor_line = math.max(1, math.min(cursor_line, primary_count))
+      cursor_line = math.max(1, math.min(single_diff_focus_line(model, primary_side), primary_count))
       vim.api.nvim_win_set_buf(state.windows.code, primary_buf)
       vim.api.nvim_win_set_cursor(state.windows.code, { cursor_line, 0 })
+      reveal_window_line(state.windows.code, "zz")
     end
 
     apply_diff_highlights(model, state.buffers.diff_before, state.buffers.diff_after, state)
