@@ -178,12 +178,13 @@ function M.goto_step(index, opts)
     return
   end
 
+  local focus_win = opts.keep_focus or vim.api.nvim_get_current_win()
   state.current = clamp_step(tonumber(index) or state.current)
   symbols.clear()
   ui.render(state)
   ui.reset_explanation_view(state)
-  if opts.keep_focus and valid_win(opts.keep_focus) then
-    vim.api.nvim_set_current_win(opts.keep_focus)
+  if valid_win(focus_win) then
+    vim.api.nvim_set_current_win(focus_win)
   end
 end
 

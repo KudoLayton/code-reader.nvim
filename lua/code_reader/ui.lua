@@ -160,7 +160,12 @@ local function valid_buf(buf)
   return buf and vim.api.nvim_buf_is_valid(buf)
 end
 
+local clear_diff_window_bindings
+
 local function close_diff_after_window(state)
+  if clear_diff_window_bindings then
+    clear_diff_window_bindings(state)
+  end
   local win = state.windows and state.windows.diff_after
   if valid_win(win) then
     pcall(vim.api.nvim_win_close, win, true)
@@ -174,6 +179,39 @@ local function restore_previous_win(previous_win)
   if valid_win(previous_win) then
     pcall(vim.api.nvim_set_current_win, previous_win)
   end
+end
+
+local function call_in_window(win, callback)
+  if not valid_win(win) then
+    return false
+  end
+  local ok, err = pcall(vim.api.nvim_win_call, win, callback)
+  if not ok then
+    return false, err
+  end
+  return true
+end
+
+local function set_window_bindings(win, enabled)
+  if not valid_win(win) then
+    return
+  end
+  vim.api.nvim_set_option_value("scrollbind", enabled, { win = win })
+  vim.api.nvim_set_option_value("cursorbind", enabled, { win = win })
+end
+
+clear_diff_window_bindings = function(state)
+  if not (state and state.windows) then
+    return
+  end
+  set_window_bindings(state.windows.code, false)
+  set_window_bindings(state.windows.diff_after, false)
+end
+
+local function reveal_window_line(win, command)
+  call_in_window(win, function()
+    vim.cmd("normal! " .. command)
+  end)
 end
 
 local function ensure_code_window(state)
@@ -894,6 +932,7 @@ function M.render_front_page(state)
   set_lines(state.buffers.front_page, lines)
   vim.api.nvim_win_set_buf(state.windows.code, state.buffers.front_page)
   vim.api.nvim_win_set_cursor(state.windows.code, { 1, 0 })
+  reveal_window_line(state.windows.code, "zt")
   render_markdown_buffer(state.buffers.front_page, state.windows.code)
 end
 
@@ -979,28 +1018,25 @@ function M.render_source(state)
     return
   end
 
-  local previous_win = vim.api.nvim_get_current_win()
-  vim.api.nvim_set_current_win(state.windows.code)
-
-  local current_path = vim.fn.fnamemodify(vim.api.nvim_buf_get_name(0), ":p")
+  local current_buf = vim.api.nvim_win_get_buf(state.windows.code)
+  local current_path = vim.fn.fnamemodify(vim.api.nvim_buf_get_name(current_buf), ":p")
   if current_path ~= path then
-    local ok, err = pcall(vim.cmd, "keepalt edit " .. vim.fn.fnameescape(path))
+    local ok, err = call_in_window(state.windows.code, function()
+      vim.cmd("keepalt edit " .. vim.fn.fnameescape(path))
+    end)
     if not ok then
       vim.notify("Code Reader: cannot open source: " .. tostring(err), vim.log.levels.ERROR)
-      if valid_win(previous_win) then
-        vim.api.nvim_set_current_win(previous_win)
-      end
       return
     end
   end
 
-  local buf = vim.api.nvim_get_current_buf()
+  local buf = vim.api.nvim_win_get_buf(state.windows.code)
   local line_count = vim.api.nvim_buf_line_count(buf)
   local start_line = math.max(1, math.min(source_ref.start_line, line_count))
   local end_line = math.max(start_line, math.min(source_ref.end_line or source_ref.start_line, line_count))
 
   vim.api.nvim_win_set_cursor(state.windows.code, { start_line, 0 })
-  vim.cmd("normal! zz")
+  reveal_window_line(state.windows.code, "zz")
 
   vim.api.nvim_buf_clear_namespace(buf, namespace, 0, -1)
   for line = 1, line_count do
@@ -1011,9 +1047,6 @@ function M.render_source(state)
     end
   end
 
-  if valid_win(previous_win) then
-    vim.api.nvim_set_current_win(previous_win)
-  end
 end
 
 function M.render(state)

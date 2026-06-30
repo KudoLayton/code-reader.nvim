@@ -7,6 +7,10 @@ local function eq(actual, expected, label)
   end
 end
 
+local function normalize_path(path)
+  return (path or ""):gsub("\\", "/")
+end
+
 local render_markdown_calls = {}
 package.preload["render-markdown"] = function()
   return {
@@ -114,6 +118,20 @@ local function has_line_background(buf, line_text, group)
   return false
 end
 
+local function window_view(win)
+  local current = vim.api.nvim_get_current_win()
+  vim.api.nvim_set_current_win(win)
+  local view = vim.fn.winsaveview()
+  vim.api.nvim_set_current_win(current)
+  return view
+end
+
+local function line_visible(win, line)
+  local view = window_view(win)
+  local height = vim.api.nvim_win_get_height(win)
+  return view.topline <= line and line <= view.topline + height - 1
+end
+
 local tmp = vim.fn.tempname()
 vim.fn.mkdir(tmp .. "/.code_reader", "p")
 vim.fn.mkdir(tmp .. "/src", "p")
@@ -135,8 +153,16 @@ vim.fn.writefile({
   "function M.render()",
   "  return true",
   "end",
-  "return M",
 }, response_file)
+for index = 5, 44 do
+  vim.fn.writefile({ "-- filler " .. tostring(index) }, response_file, "a")
+end
+vim.fn.writefile({
+  "function M.finish()",
+  "  return true",
+  "end",
+  "return M",
+}, response_file, "a")
 
 vim.fn.writefile({
   "---",
@@ -183,7 +209,7 @@ vim.fn.writefile({
   "---",
   "### 1.1.1. Return value",
   "",
-  "Source: `src/response.lua#L2-L4`",
+  "Source: `src/response.lua#L45-L47`",
   "",
   "The function returns true.",
 }, explanation_file)
@@ -258,6 +284,9 @@ code_reader.activate()
 eq(state.current, 4, "toc activation step")
 eq(vim.api.nvim_buf_get_lines(state.buffers.explanation, 0, 1, false)[1], "# 1.1.1 Return value", "toc sync explanation title")
 eq(vim.api.nvim_win_get_cursor(state.windows.explanation)[1], 1, "toc sync explanation cursor")
+eq(normalize_path(vim.api.nvim_buf_get_name(vim.api.nvim_win_get_buf(state.windows.code))), normalize_path(response_file), "toc sync code buffer")
+eq(vim.api.nvim_win_get_cursor(state.windows.code)[1], 45, "toc sync code cursor")
+eq(line_visible(state.windows.code, 45), true, "toc sync code viewport")
 eq(vim.api.nvim_get_current_win(), state.windows.toc, "toc focus stays")
 
 code_reader.goto_step(3)
@@ -265,13 +294,29 @@ local explanation_lines = vim.api.nvim_buf_get_lines(state.buffers.explanation, 
 local joined = table.concat(explanation_lines, "\n")
 eq(joined:find("## Navigation", 1, true) ~= nil, true, "navigation heading")
 eq(joined:find("- Previous: [[1|Module setup]] (↑1)", 1, true) ~= nil, true, "previous navigation link")
-eq(joined:find("- Next: [[1.1.1|Return value]] (↗ src/response.lua#L2-L4)", 1, true) ~= nil, true, "next navigation link")
+eq(joined:find("- Next: [[1.1.1|Return value]] (↗ src/response.lua#L45-L47)", 1, true) ~= nil, true, "next navigation link")
 eq(joined:find("- Parent: [[1|Module setup]] (↑1)", 1, true) ~= nil, true, "parent navigation link")
 eq(joined:find("- Children:", 1, true) ~= nil, true, "children navigation list")
-eq(joined:find("  - [[1.1.1|Return value]] (↗ src/response.lua#L2-L4)", 1, true) ~= nil, true, "child navigation link")
+eq(joined:find("  - [[1.1.1|Return value]] (↗ src/response.lua#L45-L47)", 1, true) ~= nil, true, "child navigation link")
 eq(joined:find("- Source: `src/app.lua#L2-L4`", 1, true) ~= nil, true, "source navigation link")
 eq(has_highlight(state.buffers.explanation, "Source: src/app.lua#L2-L4", "CodeReaderSourceTarget"), true, "source header highlighted")
 eq(has_highlight(state.buffers.explanation, "- Source: `src/app.lua#L2-L4`", "CodeReaderSourceTarget"), true, "source navigation highlighted")
+
+vim.api.nvim_set_current_win(state.windows.explanation)
+local next_line = nil
+for index, text in ipairs(vim.api.nvim_buf_get_lines(state.buffers.explanation, 0, -1, false)) do
+  if text:find("%[%[1%.1%.1|Return value%]%]") then
+    next_line = index
+    break
+  end
+end
+vim.api.nvim_win_set_cursor(state.windows.explanation, { next_line, 13 })
+code_reader.activate()
+eq(state.current, 4, "navigation activation step")
+eq(normalize_path(vim.api.nvim_buf_get_name(vim.api.nvim_win_get_buf(state.windows.code))), normalize_path(response_file), "navigation sync code buffer")
+eq(vim.api.nvim_win_get_cursor(state.windows.code)[1], 45, "navigation sync code cursor")
+eq(line_visible(state.windows.code, 45), true, "navigation sync code viewport")
+eq(vim.api.nvim_get_current_win(), state.windows.explanation, "navigation focus stays")
 
 local code_win = state.windows.code
 local explanation_win = state.windows.explanation
