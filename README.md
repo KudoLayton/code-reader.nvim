@@ -165,6 +165,17 @@ require("code_reader").setup({
 
 Set `dimming = false` to keep the current explanation range highlighted without dimming the rest of the code. Use `require("code_reader").toggle_dimming()` to toggle dimming from Lua, or pass `true`/`false` to set it explicitly.
 
+Enable debug logging when you need to diagnose rendering behavior on another machine:
+
+```lua
+require("code_reader").setup({
+  debug = {
+    enabled = true,
+    -- log_file = vim.fn.stdpath("log") .. "/code-reader.log",
+  },
+})
+```
+
 ## Rendering
 
 Code Reader highlights fenced code blocks in explanation and front-page Markdown buffers with Tree-sitter when the block language has a parser. Code Reader-specific navigation targets such as `[[step-id|label]]`, `treesitter://` links, `Source:` references, and `Diff:` references receive their own highlights without changing the underlying Markdown text, so `<CR>` activation continues to use the raw link syntax.
@@ -199,7 +210,7 @@ require("code_reader").setup({
 })
 ```
 
-Run `:checkhealth code_reader` to inspect Node, npm, the Mermaid helper script, and the installed dependency.
+Run `:checkhealth code_reader` to inspect Node, npm, the Mermaid helper script, the installed dependency, and Tree-sitter syntax readiness for diff rendering. When a Code Reader diff is open, health reports the detected filetype, resolved Tree-sitter language, parser availability, and highlights query availability for each changed path.
 
 ## Demo
 

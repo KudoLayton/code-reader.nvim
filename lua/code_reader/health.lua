@@ -1,4 +1,6 @@
 local M = {}
+local log = require("code_reader.log")
+local syntax = require("code_reader.syntax")
 
 local function plugin_root()
   local source = debug.getinfo(1, "S").source:gsub("^@", "")
@@ -49,10 +51,91 @@ local function add(checks, level, name, message)
   })
 end
 
+local function unique_sorted(values)
+  local seen = {}
+  local result = {}
+  for _, value in ipairs(values or {}) do
+    if value and value ~= "" and not seen[value] then
+      seen[value] = true
+      table.insert(result, value)
+    end
+  end
+  table.sort(result)
+  return result
+end
+
+local function inspect_language(checks, filetype, env)
+  local result = syntax.inspect_language(filetype, { env = env and env.syntax or nil })
+  local name = "treesitter:" .. tostring(filetype)
+  if not result.language then
+    add(checks, "warn", name, "Tree-sitter language not resolved for filetype " .. tostring(filetype))
+    return
+  end
+  if not result.parser then
+    add(checks, "warn", name, "Tree-sitter parser unavailable for " .. result.language .. ": " .. tostring(result.error))
+    return
+  end
+  if not result.query then
+    add(checks, "warn", name, "Tree-sitter highlights query unavailable for " .. result.language .. ": " .. tostring(result.error))
+    return
+  end
+  add(checks, "ok", name, "Tree-sitter syntax available for " .. tostring(filetype) .. " (" .. result.language .. ")")
+end
+
+local function inspect_path(checks, path, env)
+  local result = syntax.inspect_path(path, { env = env and env.syntax or nil })
+  local name = "diff-syntax:" .. tostring(path)
+  if not result.filetype then
+    add(checks, "warn", name, "Cannot infer filetype for diff path: " .. tostring(path))
+    return
+  end
+  if not result.language then
+    add(checks, "warn", name, "Tree-sitter language not resolved for diff path " .. tostring(path) .. " (filetype " .. result.filetype .. ")")
+    return
+  end
+  if not result.parser then
+    add(checks, "warn", name, "Tree-sitter parser unavailable for diff path " .. tostring(path) .. " (" .. result.language .. "): " .. tostring(result.error))
+    return
+  end
+  if not result.query then
+    add(checks, "warn", name, "Tree-sitter highlights query unavailable for diff path " .. tostring(path) .. " (" .. result.language .. "): " .. tostring(result.error))
+    return
+  end
+  add(
+    checks,
+    "ok",
+    name,
+    "Tree-sitter diff syntax available for " .. tostring(path) .. " (filetype " .. result.filetype .. ", language " .. result.language .. ")"
+  )
+end
+
+local function inspect_syntax(checks, opts, env)
+  local paths = unique_sorted(opts.syntax_paths or {})
+  if #paths > 0 then
+    for _, path in ipairs(paths) do
+      inspect_path(checks, path, env)
+    end
+    return
+  end
+
+  for _, filetype in ipairs({ "c", "cpp", "lua" }) do
+    inspect_language(checks, filetype, env)
+  end
+end
+
+local function inspect_debug(checks, options)
+  if log.enabled(options) then
+    add(checks, "ok", "debug", "Debug log enabled: " .. log.path(options))
+  else
+    add(checks, "info", "debug", "Debug log disabled")
+  end
+end
+
 function M.inspect(opts)
   opts = opts or {}
   local root = opts.root or plugin_root()
   local mermaid_options = opts.mermaid or {}
+  local options = opts.options or {}
   local env = opts.env or default_env()
   local enabled = mermaid_options.enabled ~= false
   local checks = {}
@@ -97,6 +180,9 @@ function M.inspect(opts)
       add(checks, "error", "smoke", "Mermaid helper smoke test failed: " .. (output ~= "" and output or "no output"))
     end
   end
+
+  inspect_syntax(checks, opts, env)
+  inspect_debug(checks, options)
 
   return checks
 end

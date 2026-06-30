@@ -38,6 +38,17 @@ local ok_env = {
   isdirectory = function()
     return 1
   end,
+  syntax = {
+    language_for_filetype = function(filetype)
+      return filetype
+    end,
+    get_string_parser = function()
+      return {}
+    end,
+    query_get = function()
+      return {}
+    end,
+  },
 }
 
 local ok_checks = health.inspect({
@@ -49,6 +60,8 @@ eq(find(ok_checks, "npm").level, "ok", "npm ok")
 eq(find(ok_checks, "helper").level, "ok", "helper ok")
 eq(find(ok_checks, "dependency").level, "ok", "dependency ok")
 eq(find(ok_checks, "smoke").level, "ok", "smoke ok")
+eq(find(ok_checks, "treesitter:cpp").level, "ok", "cpp Tree-sitter ok")
+eq(find(ok_checks, "debug").level, "info", "debug disabled info")
 
 local missing_env = {
   system = function()
@@ -80,5 +93,56 @@ local disabled_missing = health.inspect({
 eq(find(disabled_missing, "mermaid").level, "info", "disabled mermaid info")
 eq(find(disabled_missing, "node").level, "warn", "disabled missing node warn")
 eq(find(disabled_missing, "dependency").level, "info", "disabled missing dependency info")
+
+local parser_missing_env = {
+  system = ok_env.system,
+  filereadable = ok_env.filereadable,
+  isdirectory = ok_env.isdirectory,
+  syntax = {
+    language_for_filetype = function()
+      return "cpp"
+    end,
+    get_string_parser = function()
+      error("missing parser")
+    end,
+    query_get = ok_env.syntax.query_get,
+  },
+}
+
+local parser_missing = health.inspect({
+  root = "D:/Git/code-reader",
+  env = parser_missing_env,
+  syntax_paths = { "src/app.cpp" },
+})
+eq(find(parser_missing, "diff-syntax:src/app.cpp").level, "warn", "diff path parser missing warn")
+
+local query_missing_env = {
+  system = ok_env.system,
+  filereadable = ok_env.filereadable,
+  isdirectory = ok_env.isdirectory,
+  syntax = {
+    language_for_filetype = function()
+      return "cpp"
+    end,
+    get_string_parser = ok_env.syntax.get_string_parser,
+    query_get = function()
+      return nil
+    end,
+  },
+}
+
+local query_missing = health.inspect({
+  root = "D:/Git/code-reader",
+  env = query_missing_env,
+  syntax_paths = { "src/app.cpp" },
+  options = {
+    debug = {
+      enabled = true,
+      log_file = "D:/tmp/code-reader.log",
+    },
+  },
+})
+eq(find(query_missing, "diff-syntax:src/app.cpp").level, "warn", "diff path query missing warn")
+eq(find(query_missing, "debug").level, "ok", "debug enabled ok")
 
 print("health_spec: ok")
