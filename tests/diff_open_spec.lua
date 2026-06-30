@@ -29,6 +29,24 @@ local function has_line_highlight(buf, line_text, group)
   return false
 end
 
+local function has_highlight_priority_at_least(buf, line_text, group, priority)
+  local lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
+  for index, line in ipairs(lines) do
+    if line:find(line_text, 1, true) then
+      local marks = vim.api.nvim_buf_get_extmarks(buf, -1, { index - 1, 0 }, { index - 1, -1 }, {
+        details = true,
+      })
+      for _, mark in ipairs(marks) do
+        local details = mark[4] or {}
+        if details.hl_group == group and (details.priority or 0) >= priority then
+          return true
+        end
+      end
+    end
+  end
+  return false
+end
+
 local function has_line_hl_group(buf, line_text, group)
   local lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
   for index, line in ipairs(lines) do
@@ -242,6 +260,7 @@ contains(before_text, "~ local enabled = false", "before modified marker")
 contains(after_text, "~ local enabled = true", "after modified marker")
 contains(after_text, "+ local mode = \"fast\"", "after added marker")
 eq(has_line_highlight(vim.api.nvim_win_get_buf(state.windows.code), 'return "old"', "CodeReaderDimLine"), true, "unrelated hunk dimmed")
+eq(has_highlight_priority_at_least(vim.api.nvim_win_get_buf(state.windows.code), 'return "old"', "CodeReaderDimLine", 11000), true, "unrelated hunk dimming overrides syntax")
 eq(has_line_highlight(vim.api.nvim_win_get_buf(state.windows.code), "local M = {}", "CodeReaderActiveLine"), true, "focused context active")
 eq(has_line_highlight(vim.api.nvim_win_get_buf(state.windows.code), "function M.name()", "CodeReaderDimLine"), true, "unrelated context dimmed")
 eq(has_line_highlight(vim.api.nvim_win_get_buf(state.windows.code), "local enabled = false", "CodeReaderDiffModify"), true, "focused modified remains highlighted")

@@ -54,6 +54,16 @@ local function add_line_background(buf, line_index, group, priority)
   })
 end
 
+local function add_line_foreground(buf, line_index, group, priority)
+  vim.api.nvim_buf_set_extmark(buf, namespace, line_index, 0, {
+    end_row = line_index + 1,
+    end_col = 0,
+    hl_group = group,
+    hl_eol = true,
+    priority = priority or 11000,
+  })
+end
+
 local function add_pattern_highlights(buf, line_index, line, pattern, group)
   local cursor = 1
   while cursor <= #line do
@@ -363,8 +373,8 @@ local function apply_diff_highlights(model, before_buf, after_buf, state)
     apply_diff_cell_highlight(before_buf, index - 1, row.before, model.gutter_width or 0, in_focus)
     apply_diff_cell_highlight(after_buf, index - 1, row.after, model.gutter_width or 0, in_focus)
     if should_dim and not in_focus then
-      vim.api.nvim_buf_add_highlight(before_buf, namespace, "CodeReaderDimLine", index - 1, 0, -1)
-      vim.api.nvim_buf_add_highlight(after_buf, namespace, "CodeReaderDimLine", index - 1, 0, -1)
+      add_line_foreground(before_buf, index - 1, "CodeReaderDimLine")
+      add_line_foreground(after_buf, index - 1, "CodeReaderDimLine")
     end
   end
 end
