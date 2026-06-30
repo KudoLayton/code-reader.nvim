@@ -1,6 +1,8 @@
 {
   "name": "code-reader.nvim",
   "private": true,
+  "license": "Apache-2.0",
+  "author": "KudoLayton <lhslhg@gmail.com>",
   "type": "module",
   "scripts": {
     "mermaid:smoke": "node scripts/code-reader-mermaid.mjs < scripts/mermaid-smoke.mmd"

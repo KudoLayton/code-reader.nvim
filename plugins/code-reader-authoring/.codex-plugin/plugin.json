@@ -3,8 +3,10 @@
   "version": "0.2.0",
   "description": "Author Code Reader walkthrough and diff explanation markdown.",
   "author": {
-    "name": "KudoLayton"
+    "name": "KudoLayton",
+    "email": "lhslhg@gmail.com"
   },
+  "license": "Apache-2.0",
   "skills": "./skills/",
   "interface": {
     "displayName": "Code Reader Authoring",
