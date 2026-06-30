@@ -160,6 +160,7 @@ vim.fn.mkdir(tmp .. "/src", "p")
 local source_file = tmp .. "/src/app.lua"
 local diff_file = tmp .. "/.code_reader/diffs/change.diff"
 local explanation_file = tmp .. "/.code_reader/diffs/change.md"
+local log_file = tmp .. "/code-reader.log"
 
 vim.fn.writefile({
   "local M = {}",
@@ -260,6 +261,12 @@ vim.fn.writefile({
 vim.cmd("edit " .. vim.fn.fnameescape(source_file))
 local initial_code_buf = vim.api.nvim_get_current_buf()
 local code_reader = require("code_reader")
+code_reader.setup({
+  debug = {
+    enabled = true,
+    log_file = log_file,
+  },
+})
 vim.cmd("CodeReaderOpen " .. vim.fn.fnameescape(explanation_file))
 
 local state = code_reader.state()
@@ -305,6 +312,10 @@ eq(has_syntax_highlight(vim.api.nvim_win_get_buf(state.windows.code), "local ena
 eq(has_syntax_highlight(vim.api.nvim_win_get_buf(state.windows.diff_after), "local enabled = true", "lua"), true, "after diff syntax highlighted")
 eq(has_syntax_at_text_start(vim.api.nvim_win_get_buf(state.windows.code), "local enabled = false", "lua"), true, "before diff first character highlighted")
 eq(has_syntax_at_text_start(vim.api.nvim_win_get_buf(state.windows.diff_after), "local enabled = true", "lua"), true, "after diff first character highlighted")
+local debug_log = table.concat(vim.fn.readfile(log_file), "\n")
+contains(debug_log, "syntax.diff", "debug log records diff syntax event")
+contains(debug_log, "path=src/app.lua", "debug log records diff path")
+contains(debug_log, "language=lua", "debug log records diff language")
 eq(has_highlight_at_text(vim.api.nvim_win_get_buf(state.windows.code), "local enabled = false", "false", "CodeReaderDiffWord"), true, "before diff word aligns to rendered text")
 eq(has_highlight_at_text(vim.api.nvim_win_get_buf(state.windows.diff_after), "local enabled = true", "true", "CodeReaderDiffWord"), true, "after diff word aligns to rendered text")
 
@@ -432,5 +443,57 @@ contains(recovered_added, "+ local created = true", "recovered primary code wind
 
 vim.cmd("CodeReaderClose")
 eq(vim.api.nvim_get_current_buf(), initial_code_buf, "initial code buffer restored")
+
+local cpp_parser_ok = pcall(vim.treesitter.get_string_parser, "int main() { return 0; }", "cpp")
+local cpp_query_ok = false
+if cpp_parser_ok then
+  local ok, query = pcall(vim.treesitter.query.get, "cpp", "highlights")
+  cpp_query_ok = ok and query ~= nil
+end
+if cpp_query_ok then
+  local cpp_source_file = tmp .. "/src/app.cpp"
+  local cpp_diff_file = tmp .. "/.code_reader/diffs/change-cpp.diff"
+  local cpp_explanation_file = tmp .. "/.code_reader/diffs/change-cpp.md"
+
+  vim.fn.writefile({
+    "int main() {",
+    "  return 0;",
+    "}",
+  }, cpp_source_file)
+
+  vim.fn.writefile({
+    "diff --git a/src/app.cpp b/src/app.cpp",
+    "index 1111111..2222222 100644",
+    "--- a/src/app.cpp",
+    "+++ b/src/app.cpp",
+    "@@ -1,3 +1,3 @@",
+    " int main() {",
+    "-  return 0;",
+    "+  return 1;",
+    " }",
+  }, cpp_diff_file)
+
+  vim.fn.writefile({
+    "---",
+    "type: code-reader-diff",
+    "version: 1",
+    "diff: ./change-cpp.diff",
+    "---",
+    "",
+    "<!-- code-reader: front-page -->",
+    "# C++ Diff Overview",
+    "",
+    "---",
+    "# 1. Change return value",
+    "",
+    "Diff: `src/app.cpp#H1`",
+  }, cpp_explanation_file)
+
+  vim.cmd("CodeReaderOpen " .. vim.fn.fnameescape(cpp_explanation_file))
+  code_reader.next()
+  eq(has_syntax_highlight(vim.api.nvim_win_get_buf(code_reader.state().windows.code), "return 0", "cpp"), true, "C++ before diff syntax highlighted")
+  eq(has_syntax_highlight(vim.api.nvim_win_get_buf(code_reader.state().windows.diff_after), "return 1", "cpp"), true, "C++ after diff syntax highlighted")
+  vim.cmd("CodeReaderClose")
+end
 
 print("diff_open_spec: ok")

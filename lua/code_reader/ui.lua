@@ -959,8 +959,8 @@ function M.render_source(state)
     end
 
     apply_diff_highlights(model, state.buffers.diff_before, state.buffers.diff_after, state)
-    syntax.highlight_diff(state.buffers.diff_before, model.rows, "before", file.path, model.gutter_width or 0)
-    syntax.highlight_diff(state.buffers.diff_after, model.rows, "after", file.path, model.gutter_width or 0)
+    syntax.highlight_diff(state.buffers.diff_before, model.rows, "before", file.path, model.gutter_width or 0, state.options)
+    syntax.highlight_diff(state.buffers.diff_after, model.rows, "after", file.path, model.gutter_width or 0, state.options)
     return
   end
 

@@ -17,6 +17,10 @@ local state = {
       timeout_ms = 2000,
       use_ascii = false,
     },
+    debug = {
+      enabled = false,
+      log_file = nil,
+    },
   },
 }
 

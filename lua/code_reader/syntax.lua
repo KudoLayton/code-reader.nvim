@@ -1,4 +1,5 @@
 local M = {}
+local log = require("code_reader.log")
 
 M.namespace = vim.api.nvim_create_namespace("code-reader-syntax")
 M.priority = 10000
@@ -30,9 +31,8 @@ local function filetype_for_path(path)
   return extension and extension_filetypes[extension]
 end
 
-local function language_for_path(path)
-  local filetype = filetype_for_path(path)
-  return M.language_for_filetype(filetype)
+function M.filetype_for_path(path)
+  return filetype_for_path(path)
 end
 
 function M.language_for_filetype(filetype)
@@ -69,19 +69,21 @@ local function highlight_lines(buf, language, lines, line_map, col_offsets)
 
   local parser_ok, parser = pcall(vim.treesitter.get_string_parser, text, language)
   if not parser_ok or not parser then
-    return 0
+    return 0, "parser unavailable: " .. tostring(parser)
   end
 
   local trees = parser:parse(true)
   if not trees or #trees == 0 then
-    return 0
+    return 0, "parser returned no tree"
   end
 
   local count = 0
+  local query_missing = false
   parser:for_each_tree(function(tree, language_tree)
     local tree_language = language_tree:lang()
-    local query = vim.treesitter.query.get(tree_language, "highlights")
-    if not query then
+    local query_ok, query = pcall(vim.treesitter.query.get, tree_language, "highlights")
+    if not query_ok or not query then
+      query_missing = true
       return
     end
 
@@ -106,7 +108,62 @@ local function highlight_lines(buf, language, lines, line_map, col_offsets)
     end
   end)
 
+  if query_missing and count == 0 then
+    return 0, "highlights query unavailable"
+  end
+
+  if count == 0 then
+    return 0, "no highlight captures"
+  end
+
   return count
+end
+
+function M.inspect_language(filetype, opts)
+  opts = opts or {}
+  local env = opts.env or {}
+  local checks = {
+    filetype = filetype,
+    language = nil,
+    parser = false,
+    query = false,
+  }
+
+  local language_for_filetype = env.language_for_filetype or M.language_for_filetype
+  local ok, language = pcall(language_for_filetype, filetype)
+  if not ok or not language then
+    checks.error = ok and "cannot resolve Tree-sitter language" or tostring(language)
+    return checks
+  end
+
+  checks.language = language
+
+  local sample = env.sample or "int main() { return 0; }"
+  local get_string_parser = env.get_string_parser or vim.treesitter.get_string_parser
+  local parser_ok, parser_or_err = pcall(get_string_parser, sample, language)
+  checks.parser = parser_ok and parser_or_err ~= nil
+  if not checks.parser then
+    checks.error = tostring(parser_or_err)
+    return checks
+  end
+
+  local query_get = env.query_get or vim.treesitter.query.get
+  local query_ok, query_or_err = pcall(query_get, language, "highlights")
+  checks.query = query_ok and query_or_err ~= nil
+  if not checks.query then
+    checks.error = query_ok and "highlights query not found" or tostring(query_or_err)
+  end
+
+  return checks
+end
+
+function M.inspect_path(path, opts)
+  opts = opts or {}
+  local filetype_for = opts.filetype_for_path or M.filetype_for_path
+  local filetype = filetype_for(path)
+  local checks = M.inspect_language(filetype, opts)
+  checks.path = path
+  return checks
 end
 
 local function collect_side_lines(rows, side, fallback_col_offset)
@@ -126,20 +183,37 @@ local function collect_side_lines(rows, side, fallback_col_offset)
   return lines, line_map, col_offsets
 end
 
-function M.highlight_diff(buf, rows, side, path, col_offset)
+function M.highlight_diff(buf, rows, side, path, col_offset, options)
   if not (buf and vim.api.nvim_buf_is_valid(buf)) then
     return 0
   end
 
   vim.api.nvim_buf_clear_namespace(buf, M.namespace, 0, -1)
 
-  local language = language_for_path(path)
+  local filetype = M.filetype_for_path(path)
+  local language = M.language_for_filetype(filetype)
   if not language then
+    log.write(options, "syntax.diff", {
+      path = path,
+      side = side,
+      filetype = filetype or "nil",
+      language = "nil",
+      result = "missing-language",
+    })
     return 0
   end
 
   local lines, line_map, col_offsets = collect_side_lines(rows, side, col_offset or 0)
-  return highlight_lines(buf, language, lines, line_map, col_offsets)
+  local count, reason = highlight_lines(buf, language, lines, line_map, col_offsets)
+  log.write(options, "syntax.diff", {
+    path = path,
+    side = side,
+    filetype = filetype or "nil",
+    language = language,
+    result = count > 0 and "ok" or reason or "no-highlights",
+    count = count,
+  })
+  return count
 end
 
 local function fence_language(line)
