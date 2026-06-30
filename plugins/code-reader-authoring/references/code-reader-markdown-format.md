@@ -21,7 +21,8 @@ version: 1
 - Use Mermaid diagrams on the front page or individual steps when they clarify structure, control flow, data flow, or hunk impact.
 - Prefer plain prose or lists instead of Mermaid when the user disabled Mermaid rendering or `:checkhealth code_reader` reports that Node, npm, or `beautiful-mermaid` is unavailable.
 - Do not put `Source:` or `Diff:` references on the front page. Put references on concrete explanation steps.
-- Use numeric heading ids for steps, such as `# 1. Request lifecycle` and `## 1.1. Parse request`.
+- Use numeric heading ids for top-level and nested steps, such as `# 1. Request lifecycle`, `## 1.1. Parse request`, and `### 1.1.1. Validate method`.
+- Heading depth on the first heading of each `---`-separated step drives TOC nesting. A nested step must still be its own section, not only a secondary heading inside another step.
 - Use `[[step-id]]` or `[[step-id|label]]` only for links to existing steps in the same explanation.
 
 ## Code Explanation

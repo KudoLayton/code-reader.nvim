@@ -45,7 +45,7 @@ Explain the nested call-stack detail here.
 - The front page has no source range. It is rendered in the code window with its main content, an automatic source-file summary, and a step TOC.
 - Step blocks are separated by a line containing only `---`.
 - The first Markdown heading in a step becomes the step title.
-- Heading depth drives TOC nesting, so `## 1.1 ...` becomes a nested call-stack step.
+- Heading depth drives TOC nesting, so `## 1.1 ...` becomes a nested call-stack step. Nested steps are still separate `---`-delimited step blocks.
 - GitHub-style `path#Lx` and `path#Lx-Ly` references define the source range.
 - Optional source hashes can be appended as `path#Lx-Ly@sha256:<hash>`.
 - Obsidian-style `[[step-id]]` and `[[step-id|label]]` links jump to another step in the same explanation file.
