@@ -54,7 +54,14 @@ function M.language_for_filetype(filetype)
   return filetype
 end
 
-local function highlight_lines(buf, language, lines, line_map, col_offset)
+local function line_col_offset(col_offsets, row, fallback)
+  if type(col_offsets) == "table" then
+    return col_offsets[row] or fallback or 0
+  end
+  return col_offsets or fallback or 0
+end
+
+local function highlight_lines(buf, language, lines, line_map, col_offsets)
   local text = table.concat(lines, "\n")
   if text == "" then
     return 0
@@ -85,9 +92,11 @@ local function highlight_lines(buf, language, lines, line_map, col_offset)
         local buf_start = line_map[start_row]
         local buf_end = line_map[end_row] or buf_start
         if buf_start and buf_end then
-          pcall(vim.api.nvim_buf_set_extmark, buf, M.namespace, buf_start, col_offset + start_col, {
+          local start_offset = line_col_offset(col_offsets, start_row, 0)
+          local end_offset = line_col_offset(col_offsets, end_row, start_offset)
+          pcall(vim.api.nvim_buf_set_extmark, buf, M.namespace, buf_start, start_offset + start_col, {
             end_row = buf_end,
-            end_col = col_offset + end_col,
+            end_col = end_offset + end_col,
             hl_group = "@" .. capture .. "." .. tree_language,
             priority = M.priority,
           })
@@ -100,19 +109,21 @@ local function highlight_lines(buf, language, lines, line_map, col_offset)
   return count
 end
 
-local function collect_side_lines(rows, side)
+local function collect_side_lines(rows, side, fallback_col_offset)
   local lines = {}
   local line_map = {}
+  local col_offsets = {}
 
   for index, row in ipairs(rows or {}) do
     local cell = row[side]
     if cell and cell.kind ~= "blank" then
       line_map[#lines] = index - 1
+      col_offsets[#lines] = cell.text_col or fallback_col_offset
       table.insert(lines, cell.text or "")
     end
   end
 
-  return lines, line_map
+  return lines, line_map, col_offsets
 end
 
 function M.highlight_diff(buf, rows, side, path, col_offset)
@@ -127,8 +138,8 @@ function M.highlight_diff(buf, rows, side, path, col_offset)
     return 0
   end
 
-  local lines, line_map = collect_side_lines(rows, side)
-  return highlight_lines(buf, language, lines, line_map, col_offset or 0)
+  local lines, line_map, col_offsets = collect_side_lines(rows, side, col_offset or 0)
+  return highlight_lines(buf, language, lines, line_map, col_offsets)
 end
 
 local function fence_language(line)

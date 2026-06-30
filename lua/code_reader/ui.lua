@@ -331,10 +331,11 @@ local function apply_diff_cell_highlight(buf, line_index, cell, gutter_width, in
   end
 
   if cell.kind == "modified" then
+    local text_col = cell.text_col or gutter_width
     for _, span in ipairs(cell.spans or {}) do
       if span.end_col > span.start_col then
-        vim.api.nvim_buf_set_extmark(buf, namespace, line_index, gutter_width + span.start_col, {
-          end_col = gutter_width + span.end_col,
+        vim.api.nvim_buf_set_extmark(buf, namespace, line_index, text_col + span.start_col, {
+          end_col = text_col + span.end_col,
           hl_group = "CodeReaderDiffWord",
           hl_mode = "combine",
           priority = 90,

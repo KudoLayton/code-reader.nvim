@@ -91,6 +91,28 @@ local function has_syntax_at_text_start(buf, line_text, language)
   return false
 end
 
+local function has_highlight_at_text(buf, line_text, text, group)
+  local lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
+  for index, line in ipairs(lines) do
+    if line:find(line_text, 1, true) then
+      local start_index = line:find(text, 1, true)
+      if start_index then
+        local start_col = start_index - 1
+        local marks = vim.api.nvim_buf_get_extmarks(buf, -1, { index - 1, start_col }, { index - 1, start_col + #text }, {
+          details = true,
+        })
+        for _, mark in ipairs(marks) do
+          local details = mark[4] or {}
+          if mark[3] == start_col and details.end_col == start_col + #text and details.hl_group == group then
+            return true
+          end
+        end
+      end
+    end
+  end
+  return false
+end
+
 local function has_highlight(buf, line_text, group)
   local lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
   for index, line in ipairs(lines) do
@@ -229,6 +251,8 @@ eq(has_syntax_highlight(vim.api.nvim_win_get_buf(state.windows.code), "local ena
 eq(has_syntax_highlight(vim.api.nvim_win_get_buf(state.windows.diff_after), "local enabled = true", "lua"), true, "after diff syntax highlighted")
 eq(has_syntax_at_text_start(vim.api.nvim_win_get_buf(state.windows.code), "local enabled = false", "lua"), true, "before diff first character highlighted")
 eq(has_syntax_at_text_start(vim.api.nvim_win_get_buf(state.windows.diff_after), "local enabled = true", "lua"), true, "after diff first character highlighted")
+eq(has_highlight_at_text(vim.api.nvim_win_get_buf(state.windows.code), "local enabled = false", "false", "CodeReaderDiffWord"), true, "before diff word aligns to rendered text")
+eq(has_highlight_at_text(vim.api.nvim_win_get_buf(state.windows.diff_after), "local enabled = true", "true", "CodeReaderDiffWord"), true, "after diff word aligns to rendered text")
 
 code_reader.toggle_focus()
 eq(has_line_highlight(vim.api.nvim_win_get_buf(state.windows.code), 'return "old"', "CodeReaderDimLine"), false, "focus toggle removes diff dimming")

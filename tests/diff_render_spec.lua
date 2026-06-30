@@ -101,6 +101,16 @@ ok(before_text:find("%s*>%s+\"parse\",") ~= nil, "before gutter moved marker")
 ok(before_text:find("%s*~%s+local status = status_line%(200%)") ~= nil, "before gutter modified marker")
 ok(after_text:find('%s*%+%s+table.insert%(events, "created"%)') ~= nil, "after gutter add marker")
 
+for index, row in ipairs(model.rows) do
+  for _, side in ipairs({ "before", "after" }) do
+    local cell = row[side]
+    local rendered = side == "before" and model.before_lines[index] or model.after_lines[index]
+    if cell and cell.kind ~= "blank" and cell.text ~= "" then
+      eq(cell.text_col, rendered:find(cell.text, 1, true) - 1, side .. " text column")
+    end
+  end
+end
+
 local indentation_sample = [[
 diff --git a/src/indent.lua b/src/indent.lua
 index 1111111..2222222 100644

@@ -330,7 +330,9 @@ end
 
 local function format_cell(cell, width)
   local line_no = cell.line_no and tostring(cell.line_no) or ""
-  return string.format("%" .. tostring(width) .. "s %s %s", line_no, cell.marker or "", cell.text or "")
+  local prefix = string.format("%" .. tostring(width) .. "s %s ", line_no, cell.marker or "")
+  cell.text_col = #prefix
+  return prefix .. (cell.text or "")
 end
 
 local function max_line_width(hunk)
