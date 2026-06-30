@@ -126,12 +126,6 @@ local function window_view(win)
   return view
 end
 
-local function line_visible(win, line)
-  local view = window_view(win)
-  local height = vim.api.nvim_win_get_height(win)
-  return view.topline <= line and line <= view.topline + height - 1
-end
-
 local tmp = vim.fn.tempname()
 vim.fn.mkdir(tmp .. "/.code_reader", "p")
 vim.fn.mkdir(tmp .. "/src", "p")
@@ -286,7 +280,7 @@ eq(vim.api.nvim_buf_get_lines(state.buffers.explanation, 0, 1, false)[1], "# 1.1
 eq(vim.api.nvim_win_get_cursor(state.windows.explanation)[1], 1, "toc sync explanation cursor")
 eq(normalize_path(vim.api.nvim_buf_get_name(vim.api.nvim_win_get_buf(state.windows.code))), normalize_path(response_file), "toc sync code buffer")
 eq(vim.api.nvim_win_get_cursor(state.windows.code)[1], 45, "toc sync code cursor")
-eq(line_visible(state.windows.code, 45), true, "toc sync code viewport")
+eq(window_view(state.windows.code).topline, 45, "toc sync code viewport")
 eq(vim.api.nvim_get_current_win(), state.windows.toc, "toc focus stays")
 
 code_reader.goto_step(3)
@@ -315,7 +309,7 @@ code_reader.activate()
 eq(state.current, 4, "navigation activation step")
 eq(normalize_path(vim.api.nvim_buf_get_name(vim.api.nvim_win_get_buf(state.windows.code))), normalize_path(response_file), "navigation sync code buffer")
 eq(vim.api.nvim_win_get_cursor(state.windows.code)[1], 45, "navigation sync code cursor")
-eq(line_visible(state.windows.code, 45), true, "navigation sync code viewport")
+eq(window_view(state.windows.code).topline, 45, "navigation sync code viewport")
 eq(vim.api.nvim_get_current_win(), state.windows.explanation, "navigation focus stays")
 
 local code_win = state.windows.code

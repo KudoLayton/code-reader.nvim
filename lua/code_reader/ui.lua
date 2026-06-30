@@ -1003,8 +1003,8 @@ function M.render_source(state)
       cursor_line = math.max(1, math.min(cursor_line, math.min(before_count, after_count)))
       vim.api.nvim_win_set_cursor(state.windows.code, { cursor_line, 0 })
       vim.api.nvim_win_set_cursor(state.windows.diff_after, { cursor_line, 0 })
-      reveal_window_line(state.windows.code, "zz")
-      reveal_window_line(state.windows.diff_after, "zz")
+      reveal_window_line(state.windows.code, "zt")
+      reveal_window_line(state.windows.diff_after, "zt")
       set_window_bindings(state.windows.code, true)
       set_window_bindings(state.windows.diff_after, true)
     else
@@ -1015,7 +1015,7 @@ function M.render_source(state)
       cursor_line = math.max(1, math.min(single_diff_focus_line(model, primary_side), primary_count))
       vim.api.nvim_win_set_buf(state.windows.code, primary_buf)
       vim.api.nvim_win_set_cursor(state.windows.code, { cursor_line, 0 })
-      reveal_window_line(state.windows.code, "zz")
+      reveal_window_line(state.windows.code, "zt")
     end
 
     apply_diff_highlights(model, state.buffers.diff_before, state.buffers.diff_after, state)
@@ -1058,7 +1058,7 @@ function M.render_source(state)
   local end_line = math.max(start_line, math.min(source_ref.end_line or source_ref.start_line, line_count))
 
   vim.api.nvim_win_set_cursor(state.windows.code, { start_line, 0 })
-  reveal_window_line(state.windows.code, "zz")
+  reveal_window_line(state.windows.code, "zt")
 
   vim.api.nvim_buf_clear_namespace(buf, namespace, 0, -1)
   for line = 1, line_count do

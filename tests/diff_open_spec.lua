@@ -364,6 +364,8 @@ eq(has_highlight(vim.api.nvim_win_get_buf(state.windows.code), "[[1|Toggle flag]
 
 code_reader.next()
 eq(valid_win(state.windows.diff_after), true, "two-sided diff creates after window")
+eq(window_view(state.windows.code).topline, vim.api.nvim_win_get_cursor(state.windows.code)[1], "two-sided diff before starts at focused row")
+eq(window_view(state.windows.diff_after).topline, vim.api.nvim_win_get_cursor(state.windows.diff_after)[1], "two-sided diff after starts at focused row")
 local explanation = table.concat(vim.api.nvim_buf_get_lines(state.buffers.explanation, 0, -1, false), "\n")
 contains(explanation, "Diff: src/app.lua#H1", "diff source header")
 contains(explanation, "View: full file side-by-side", "full view header")
@@ -534,7 +536,7 @@ eq(valid_win(state.windows.diff_after), nil, "deleted file renders as one-column
 local deleted_text = table.concat(vim.api.nvim_buf_get_lines(vim.api.nvim_win_get_buf(state.windows.code), 0, -1, false), "\n")
 contains(deleted_text, "- local obsolete = true", "deleted file content in primary code window")
 eq(vim.api.nvim_win_get_cursor(state.windows.code)[1], 11, "deleted file range cursor moves to focused deletion")
-eq(window_view(state.windows.code).topline <= 11, true, "deleted file viewport reaches focused deletion")
+eq(window_view(state.windows.code).topline, 11, "deleted file viewport starts at focused deletion")
 
 code_reader.goto_step(2)
 local closed_after = state.windows.diff_after
