@@ -396,21 +396,6 @@ end
 function M.render_hunk(hunk, opts)
   opts = opts or {}
   local model = render_hunk_rows(hunk)
-  if opts.side then
-    local range = M.resolve_hunk_range(hunk, opts.side, opts)
-    if range then
-      local filtered = {}
-      for _, row in ipairs(model.rows) do
-        local cell = opts.side == "old" and row.before or row.after
-        if cell and cell.line_no and cell.line_no >= range.start_line and cell.line_no <= range.end_line then
-          table.insert(filtered, row)
-        end
-      end
-      if #filtered > 0 then
-        model.rows = filtered
-      end
-    end
-  end
   local width = opts.width or max_line_width(hunk)
   local before_lines, after_lines = format_rows(model.rows, width)
   model.before_lines = before_lines
@@ -418,6 +403,20 @@ function M.render_hunk(hunk, opts)
   model.gutter_width = width + 3
   model.focus_start = 1
   model.focus_end = #model.rows
+  local range = opts.side and M.resolve_hunk_range(hunk, opts.side, opts) or nil
+  if range then
+    local focus_start = nil
+    local focus_end = nil
+    for index, row in ipairs(model.rows) do
+      local cell = opts.side == "old" and row.before or row.after
+      if cell and cell.line_no and cell.line_no >= range.start_line and cell.line_no <= range.end_line then
+        focus_start = focus_start or index
+        focus_end = index
+      end
+    end
+    model.focus_start = focus_start or model.focus_start
+    model.focus_end = focus_end or model.focus_end
+  end
   return model
 end
 
@@ -497,7 +496,8 @@ local function append_remaining_rows(rows, before_lines, after_lines, old_cursor
   end
 end
 
-function M.render_file(file, before_lines, after_lines, focus_hunk)
+function M.render_file(file, before_lines, after_lines, focus_hunk, diff_ref, opts)
+  opts = opts or {}
   local rows = {}
   local old_cursor = 1
   local new_cursor = 1
@@ -505,33 +505,35 @@ function M.render_file(file, before_lines, after_lines, focus_hunk)
   local focus_end = 1
 
   for _, hunk in ipairs(file.hunks or {}) do
-    old_cursor, new_cursor = append_unchanged_rows(
-      rows,
-      before_lines,
-      after_lines,
-      old_cursor,
-      new_cursor,
-      hunk.old_start,
-      hunk.new_start
-    )
+    if not opts.only_hunk or hunk == focus_hunk then
+      old_cursor, new_cursor = append_unchanged_rows(
+        rows,
+        before_lines,
+        after_lines,
+        old_cursor,
+        new_cursor,
+        hunk.old_start,
+        hunk.new_start
+      )
 
-    local hunk_model = render_hunk_rows(hunk)
-    if hunk == focus_hunk then
-      focus_start = #rows + 1
-      focus_end = #rows + #hunk_model.rows
+      local hunk_model = render_hunk_rows(hunk)
+      if hunk == focus_hunk then
+        focus_start = #rows + 1
+        focus_end = #rows + #hunk_model.rows
+      end
+      for _, row in ipairs(hunk_model.rows) do
+        table.insert(rows, row)
+      end
+      old_cursor = hunk.old_start + hunk.old_count
+      new_cursor = hunk.new_start + hunk.new_count
     end
-    for _, row in ipairs(hunk_model.rows) do
-      table.insert(rows, row)
-    end
-    old_cursor = hunk.old_start + hunk.old_count
-    new_cursor = hunk.new_start + hunk.new_count
   end
 
   append_remaining_rows(rows, before_lines, after_lines, old_cursor, new_cursor)
 
   local width = math.max(1, #tostring(math.max(#before_lines, #after_lines)))
   local rendered_before, rendered_after = format_rows(rows, width)
-  return {
+  local model = {
     rows = rows,
     before_lines = rendered_before,
     after_lines = rendered_after,
@@ -539,38 +541,25 @@ function M.render_file(file, before_lines, after_lines, focus_hunk)
     focus_end = focus_end,
     gutter_width = width + 3,
   }
-end
 
-local function filtered_model(base_model, side, range)
-  if not range then
-    return base_model
-  end
-  local rows = {}
-  for _, row in ipairs(base_model.rows or {}) do
-    local cell = side == "old" and row.before or row.after
-    if cell and cell.line_no and cell.line_no >= range.start_line and cell.line_no <= range.end_line then
-      table.insert(rows, row)
+  local range = diff_ref and diff_ref.side and M.resolve_hunk_range(focus_hunk, diff_ref.side, diff_ref) or nil
+  if range then
+    local range_focus_start = nil
+    local range_focus_end = nil
+    for index, row in ipairs(rows) do
+      local cell = diff_ref.side == "old" and row.before or row.after
+      if cell and cell.line_no and cell.line_no >= range.start_line and cell.line_no <= range.end_line then
+        range_focus_start = range_focus_start or index
+        range_focus_end = index
+      end
+    end
+    if range_focus_start and range_focus_end then
+      model.focus_start = range_focus_start
+      model.focus_end = range_focus_end
     end
   end
-  if #rows == 0 then
-    return base_model
-  end
-  local before_lines, after_lines = format_rows(rows, math.max(1, (base_model.gutter_width or 4) - 3))
-  return {
-    rows = rows,
-    before_lines = before_lines,
-    after_lines = after_lines,
-    focus_start = 1,
-    focus_end = #rows,
-    gutter_width = base_model.gutter_width,
-  }
-end
 
-function M.render_window(file, before_lines, after_lines, focus_hunk, diff_ref)
-  local side = diff_ref and diff_ref.side
-  local range = side and M.resolve_hunk_range(focus_hunk, side, diff_ref) or nil
-  local model = M.render_file(file, before_lines, after_lines, focus_hunk)
-  return filtered_model(model, side, range)
+  return model
 end
 
 function M.summary_label(summary)

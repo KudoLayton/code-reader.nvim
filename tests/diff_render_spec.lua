@@ -143,7 +143,7 @@ local range = render.resolve_hunk_range(hunk, "new", {
 eq(range.start_line, 1, "relative range start")
 eq(range.end_line, 10, "relative range end")
 
-local window_model = render.render_window(
+local focused_model = render.render_file(
   parsed.files[1],
   {
     "header",
@@ -173,10 +173,13 @@ local window_model = render.render_window(
   hunk,
   { side = "new", padding = 2 }
 )
-local window_before = table.concat(window_model.before_lines, "\n")
-local window_after = table.concat(window_model.after_lines, "\n")
-ok(window_before:find("local steps = {", 1, true) ~= nil, "window clamps leading padding")
-ok(window_after:find("footer", 1, true) ~= nil, "window includes trailing padding")
-ok(window_after:find('table.insert(events, "created")', 1, true) ~= nil, "window includes hunk change")
+local focused_before = table.concat(focused_model.before_lines, "\n")
+local focused_after = table.concat(focused_model.after_lines, "\n")
+eq(#focused_model.rows, 12, "focused full file row count")
+eq(focused_model.focus_start, 1, "range focus start")
+eq(focused_model.focus_end, 12, "range focus end")
+ok(focused_before:find("local steps = {", 1, true) ~= nil, "focused view keeps full file")
+ok(focused_after:find("footer", 1, true) ~= nil, "focused view keeps trailing file content")
+ok(focused_after:find('table.insert(events, "created")', 1, true) ~= nil, "focused view includes hunk change")
 
 print("diff_render_spec: ok")

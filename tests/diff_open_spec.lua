@@ -257,7 +257,29 @@ local range_after = table.concat(vim.api.nvim_buf_get_lines(vim.api.nvim_win_get
 contains(range_before, "local enabled = false", "range before content")
 contains(range_after, "local enabled = true", "range after content")
 contains(range_after, "return M", "range includes trailing padding")
-eq(range_after:find('return "new"', 1, true), nil, "range excludes unrelated hunk")
+contains(range_after, 'return "new"', "range keeps full file diff")
+eq(has_line_highlight(vim.api.nvim_win_get_buf(state.windows.code), 'return "old"', "CodeReaderDimLine"), true, "range dims outside focus")
+eq(has_line_highlight(vim.api.nvim_win_get_buf(state.windows.code), "local enabled = false", "CodeReaderDiffModify"), true, "range keeps focused change highlighted")
+
+vim.fn.writefile({
+  "local M = {}",
+  "local enabled = false",
+  "",
+  "return M",
+  "",
+  "",
+  "",
+  "function M.name()",
+  "  return \"custom\"",
+  "end",
+}, source_file)
+code_reader.goto_step(4)
+local hunk_only_explanation = table.concat(vim.api.nvim_buf_get_lines(state.buffers.explanation, 0, -1, false), "\n")
+contains(hunk_only_explanation, "View: selected hunk side-by-side", "selected hunk full file header")
+contains(hunk_only_explanation, "Status: applies", "selected hunk status")
+local hunk_only_after = table.concat(vim.api.nvim_buf_get_lines(vim.api.nvim_win_get_buf(state.windows.diff_after), 0, -1, false), "\n")
+contains(hunk_only_after, "local enabled = true", "selected hunk applied")
+contains(hunk_only_after, 'return "custom"', "selected hunk preserves unrelated current content")
 
 vim.fn.writefile({
   "local M = {}",

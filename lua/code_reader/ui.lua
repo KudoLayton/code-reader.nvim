@@ -258,22 +258,36 @@ local function analyze_diff_file(state, file)
 end
 
 local function analyze_diff_target(state, file, hunk, diff_ref)
-  if diff_ref and diff_ref.side then
-    if not file then
-      return { status = "missing", before_lines = {}, after_lines = {} }
-    end
-    local path = source.resolve_path({ path = file.path }, { root = state.root })
-    local lines = read_source_lines(path)
-    if not lines then
-      return { status = "missing", before_lines = {}, after_lines = {} }
-    end
-    return diff.analyze_hunk(file, hunk, lines)
+  local analysis = analyze_diff_file(state, file)
+  if analysis.status == "applies" or analysis.status == "already-applied" then
+    analysis.view = "full-file"
+    return analysis
   end
-  return analyze_diff_file(state, file)
+
+  if not (file and hunk) then
+    return analysis
+  end
+
+  local path = source.resolve_path({ path = file.path }, { root = state.root })
+  local lines = read_source_lines(path)
+  if not lines then
+    return analysis
+  end
+
+  local hunk_analysis = diff.analyze_hunk(file, hunk, lines)
+  if hunk_analysis.status == "applies" or hunk_analysis.status == "already-applied" then
+    hunk_analysis.view = "selected-hunk"
+    return hunk_analysis
+  end
+
+  return analysis
 end
 
 local function diff_view_label(analysis)
-  if analysis and (analysis.status == "applies" or analysis.status == "already-applied") then
+  if analysis and analysis.view == "selected-hunk" then
+    return "selected hunk side-by-side"
+  end
+  if analysis and analysis.view == "full-file" then
     return "full file side-by-side"
   end
   return "patch-only side-by-side"
@@ -825,11 +839,10 @@ function M.render_source(state)
     local cursor_line = 1
     local full_view = analysis.status == "applies" or analysis.status == "already-applied"
 
-    if full_view and diff_ref and diff_ref.side then
-      model = diff_render.render_window(file, analysis.before_lines, analysis.after_lines, hunk, diff_ref)
-      cursor_line = model.focus_start or 1
-    elseif full_view then
-      model = diff_render.render_file(file, analysis.before_lines, analysis.after_lines, hunk)
+    if full_view then
+      model = diff_render.render_file(file, analysis.before_lines, analysis.after_lines, hunk, diff_ref, {
+        only_hunk = analysis.view == "selected-hunk",
+      })
       cursor_line = model.focus_start or 1
     else
       model = diff_render.render_hunk(hunk, diff_ref)

@@ -30,7 +30,7 @@ The `path` assignment is moved below `user`, keeping the returned path close to 
 
 Diff: `src/request.lua#H1@new:padding=1`
 
-The same hunk also adds `request_id` to the parsed request and returned table. The padding range includes one line around the hunk so the new field can be read in context.
+The same hunk also adds `request_id` to the parsed request and returned table. The padding range focuses one line around the hunk while the side-by-side view keeps the comparable file visible.
 
 ---
 # 4. Allow PUT requests
