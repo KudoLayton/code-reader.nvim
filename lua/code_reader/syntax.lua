@@ -3,6 +3,7 @@ local log = require("code_reader.log")
 
 M.namespace = vim.api.nvim_create_namespace("code-reader-syntax")
 M.priority = 10000
+M.notified_missing_languages = {}
 
 local extension_filetypes = {
   c = "c",
@@ -43,15 +44,33 @@ function M.language_for_filetype(filetype)
   if vim.treesitter.language and vim.treesitter.language.get_lang then
     local language = vim.treesitter.language.get_lang(filetype) or filetype
     if vim.treesitter.language.inspect then
-      local ok = pcall(vim.treesitter.language.inspect, language)
+      local ok, err = pcall(vim.treesitter.language.inspect, language)
       if not ok then
-        return nil
+        return nil, tostring(err)
       end
     end
     return language
   end
 
   return filetype
+end
+
+local function notify_missing_language(filetype, path, reason)
+  local key = tostring(filetype) .. "\n" .. tostring(path)
+  if M.notified_missing_languages[key] then
+    return
+  end
+  M.notified_missing_languages[key] = true
+
+  local message = "Code Reader: Tree-sitter parser is unavailable for " .. tostring(filetype)
+  if path then
+    message = message .. " (" .. path .. ")"
+  end
+  if reason and reason ~= "" then
+    message = message .. ": " .. reason
+  end
+  message = message .. ". Diff syntax highlighting is disabled for this file."
+  vim.notify(message, vim.log.levels.WARN)
 end
 
 local function line_col_offset(col_offsets, row, fallback)
@@ -130,9 +149,9 @@ function M.inspect_language(filetype, opts)
   }
 
   local language_for_filetype = env.language_for_filetype or M.language_for_filetype
-  local ok, language = pcall(language_for_filetype, filetype)
+  local ok, language, reason = pcall(language_for_filetype, filetype)
   if not ok or not language then
-    checks.error = ok and "cannot resolve Tree-sitter language" or tostring(language)
+    checks.error = ok and (reason or "cannot resolve Tree-sitter language") or tostring(language)
     return checks
   end
 
@@ -191,13 +210,15 @@ function M.highlight_diff(buf, rows, side, path, col_offset, options)
   vim.api.nvim_buf_clear_namespace(buf, M.namespace, 0, -1)
 
   local filetype = M.filetype_for_path(path)
-  local language = M.language_for_filetype(filetype)
+  local language, reason = M.language_for_filetype(filetype)
   if not language then
+    notify_missing_language(filetype, path, reason)
     log.write(options, "syntax.diff", {
       path = path,
       side = side,
       filetype = filetype or "nil",
       language = "nil",
+      reason = reason or "cannot resolve Tree-sitter language",
       result = "missing-language",
     })
     return 0

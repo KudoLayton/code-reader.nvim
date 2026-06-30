@@ -135,6 +135,58 @@ local function has_highlight_at_text(buf, line_text, text, group)
   return false
 end
 
+local function render_missing_language_notification()
+  local syntax = require("code_reader.syntax")
+  local original_filetype_for_path = syntax.filetype_for_path
+  local original_language_for_filetype = syntax.language_for_filetype
+  local original_notify = vim.notify
+  local messages = {}
+  local buf = vim.api.nvim_create_buf(false, true)
+  local rows = {
+    {
+      before = {
+        kind = "context",
+        text = "int main() { return 0; }",
+        text_col = 0,
+      },
+    },
+  }
+
+  syntax.notified_missing_languages = {}
+  syntax.filetype_for_path = function()
+    return "cpp"
+  end
+  syntax.language_for_filetype = function()
+    return nil, "no parser for cpp"
+  end
+  vim.notify = function(message, level)
+    table.insert(messages, {
+      message = message,
+      level = level,
+    })
+  end
+
+  local missing_log = vim.fn.tempname()
+  syntax.highlight_diff(buf, rows, "before", "src/missing.cpp", 0, {
+    debug = {
+      enabled = true,
+      log_file = missing_log,
+    },
+  })
+  syntax.highlight_diff(buf, rows, "after", "src/missing.cpp", 0, {
+    debug = {
+      enabled = true,
+      log_file = missing_log,
+    },
+  })
+
+  syntax.filetype_for_path = original_filetype_for_path
+  syntax.language_for_filetype = original_language_for_filetype
+  vim.notify = original_notify
+
+  return messages, table.concat(vim.fn.readfile(missing_log), "\n")
+end
+
 local function has_highlight(buf, line_text, group)
   local lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
   for index, line in ipairs(lines) do
@@ -316,6 +368,11 @@ local debug_log = table.concat(vim.fn.readfile(log_file), "\n")
 contains(debug_log, "syntax.diff", "debug log records diff syntax event")
 contains(debug_log, "path=src/app.lua", "debug log records diff path")
 contains(debug_log, "language=lua", "debug log records diff language")
+local missing_messages, missing_log = render_missing_language_notification()
+eq(#missing_messages, 1, "missing Tree-sitter parser notifies once per path")
+contains(missing_messages[1].message, "Tree-sitter parser is unavailable for cpp", "missing parser notification explains parser")
+contains(missing_messages[1].message, "Diff syntax highlighting is disabled for this file.", "missing parser notification explains impact")
+contains(missing_log, "reason=no parser for cpp", "missing parser log records reason")
 eq(has_highlight_at_text(vim.api.nvim_win_get_buf(state.windows.code), "local enabled = false", "false", "CodeReaderDiffWord"), true, "before diff word aligns to rendered text")
 eq(has_highlight_at_text(vim.api.nvim_win_get_buf(state.windows.diff_after), "local enabled = true", "true", "CodeReaderDiffWord"), true, "after diff word aligns to rendered text")
 

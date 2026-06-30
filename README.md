@@ -210,7 +210,7 @@ require("code_reader").setup({
 })
 ```
 
-Run `:checkhealth code_reader` to inspect Node, npm, the Mermaid helper script, the installed dependency, and Tree-sitter syntax readiness for diff rendering. When a Code Reader diff is open, health reports the detected filetype, resolved Tree-sitter language, parser availability, and highlights query availability for each changed path.
+Run `:checkhealth code_reader` to inspect Node, npm, the Mermaid helper script, the installed dependency, and Tree-sitter syntax readiness for diff rendering. When a Code Reader diff is open, health reports the detected filetype, resolved Tree-sitter language, parser availability, and highlights query availability for each changed path. If a diff file's Tree-sitter parser is unavailable while rendering, Code Reader shows a warning once for that file and leaves syntax highlighting disabled for it.
 
 ## Demo
 
