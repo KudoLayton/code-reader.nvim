@@ -395,9 +395,16 @@ local function render_hunk_rows(hunk)
   }
 end
 
+local function annotate_rows(rows, hunk)
+  for _, row in ipairs(rows or {}) do
+    row.hunk = hunk
+  end
+end
+
 function M.render_hunk(hunk, opts)
   opts = opts or {}
   local model = render_hunk_rows(hunk)
+  annotate_rows(model.rows, hunk)
   local width = opts.width or max_line_width(hunk)
   local before_lines, after_lines = format_rows(model.rows, width)
   model.before_lines = before_lines
@@ -519,6 +526,7 @@ function M.render_file(file, before_lines, after_lines, focus_hunk, diff_ref, op
       )
 
       local hunk_model = render_hunk_rows(hunk)
+      annotate_rows(hunk_model.rows, hunk)
       if hunk == focus_hunk then
         focus_start = #rows + 1
         focus_end = #rows + #hunk_model.rows

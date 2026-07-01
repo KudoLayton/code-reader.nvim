@@ -33,6 +33,64 @@ local function render_markdown_lines(text, state)
   return mermaid.render_lines(split_lines(text), state.options and state.options.mermaid or {})
 end
 
+local function render_markdown_lines_with_map(text, line_map, state)
+  local lines, rendered_map = mermaid.render_lines_with_map(
+    split_lines(text),
+    line_map,
+    state.options and state.options.mermaid or {}
+  )
+  local map = {}
+  for index = 1, #lines do
+    local item = rendered_map and rendered_map[index] or nil
+    table.insert(map, item and {
+      kind = "markdown",
+      start_line = item.start_line,
+      end_line = item.end_line,
+    } or {
+      kind = "generated",
+    })
+  end
+  return lines, map
+end
+
+local function append_mapped_line(lines, map, line, item)
+  table.insert(lines, line)
+  table.insert(map, item or { kind = "generated" })
+end
+
+local function append_mapped_lines(lines, map, new_lines, new_map)
+  for index, line in ipairs(new_lines or {}) do
+    append_mapped_line(lines, map, line, new_map and new_map[index] or nil)
+  end
+end
+
+local function set_refcopy_map(state, buf, map)
+  state.refcopy_maps = state.refcopy_maps or {}
+  state.refcopy_maps[buf] = map
+end
+
+local function clear_refcopy_map(state, buf)
+  if state.refcopy_maps then
+    state.refcopy_maps[buf] = nil
+  end
+end
+
+local function build_diff_ref_map(model, path, side)
+  local map = {}
+  local cell_key = side == "old" and "before" or "after"
+  for _, row in ipairs((model and model.rows) or {}) do
+    local cell = row[cell_key]
+    table.insert(map, {
+      kind = "diff",
+      path = path,
+      hunk = row.hunk,
+      side = side,
+      line_no = cell and cell.line_no or nil,
+    })
+  end
+  return map
+end
+
 local function add_range_highlight(buf, line_index, start_col, end_col, group)
   if start_col and end_col and end_col > start_col then
     vim.api.nvim_buf_set_extmark(buf, link_namespace, line_index, start_col, {
@@ -823,17 +881,25 @@ function M.render_explanation(state)
   end
 
   if is_front_page(step) then
-    local lines = {
-      "# " .. step.id .. " " .. step.title,
-      "",
-      "Step: " .. tostring(state.current) .. " / " .. tostring(#state.doc.steps),
-      "Source: none",
-      "Status: overview",
-      "",
-    }
+    local lines = {}
+    local map = {}
+    append_mapped_line(lines, map, "# " .. step.id .. " " .. step.title, step.heading_line and {
+      kind = "markdown",
+      start_line = step.heading_line,
+      end_line = step.heading_line,
+    } or nil)
+    append_mapped_line(lines, map, "")
+    append_mapped_line(lines, map, "Step: " .. tostring(state.current) .. " / " .. tostring(#state.doc.steps))
+    append_mapped_line(lines, map, "Source: none")
+    append_mapped_line(lines, map, "Status: overview")
+    append_mapped_line(lines, map, "")
 
     append_navigation(lines, state, step, nil)
+    for index = #map + 1, #lines do
+      map[index] = { kind = "generated" }
+    end
     set_lines(state.buffers.explanation, lines)
+    set_refcopy_map(state, state.buffers.explanation, map)
     render_markdown_buffer(state.buffers.explanation, state.windows.explanation)
     return
   end
@@ -842,27 +908,34 @@ function M.render_explanation(state)
     local diff_ref = step.diff_refs and step.diff_refs[1] or nil
     local file, hunk = find_diff_target(state, diff_ref)
     local analysis = analyze_diff_target(state, file, hunk, diff_ref)
-    local lines = {
-      "# " .. step.id .. " " .. step.title,
-      "",
-      "Step: " .. tostring(state.current) .. " / " .. tostring(#state.doc.steps),
-      "Diff: " .. diff_ref_label(diff_ref),
-      "View: " .. diff_view_label(analysis),
-      "Status: " .. (analysis.status or "unknown"),
-    }
+    local lines = {}
+    local map = {}
+    append_mapped_line(lines, map, "# " .. step.id .. " " .. step.title, step.heading_line and {
+      kind = "markdown",
+      start_line = step.heading_line,
+      end_line = step.heading_line,
+    } or nil)
+    append_mapped_line(lines, map, "")
+    append_mapped_line(lines, map, "Step: " .. tostring(state.current) .. " / " .. tostring(#state.doc.steps))
+    append_mapped_line(lines, map, "Diff: " .. diff_ref_label(diff_ref))
+    append_mapped_line(lines, map, "View: " .. diff_view_label(analysis))
+    append_mapped_line(lines, map, "Status: " .. (analysis.status or "unknown"))
 
     if file and hunk then
-      table.insert(lines, diff.range_ref_label(file, hunk, diff_ref))
-      table.insert(lines, "Rendering: " .. diff_render.summary_label(diff_render.render_hunk(hunk, diff_ref).summary))
+      append_mapped_line(lines, map, diff.range_ref_label(file, hunk, diff_ref))
+      append_mapped_line(lines, map, "Rendering: " .. diff_render.summary_label(diff_render.render_hunk(hunk, diff_ref).summary))
     end
-    table.insert(lines, "")
+    append_mapped_line(lines, map, "")
 
-    for _, line in ipairs(render_markdown_lines(step.content, state)) do
-      table.insert(lines, line)
-    end
+    local markdown_lines, markdown_map = render_markdown_lines_with_map(step.content, step.content_line_map, state)
+    append_mapped_lines(lines, map, markdown_lines, markdown_map)
 
     append_navigation(lines, state, step, nil)
+    for index = #map + 1, #lines do
+      map[index] = { kind = "generated" }
+    end
     set_lines(state.buffers.explanation, lines)
+    set_refcopy_map(state, state.buffers.explanation, map)
     render_markdown_buffer(state.buffers.explanation, state.windows.explanation)
     return
   end
@@ -873,22 +946,29 @@ function M.render_explanation(state)
     explanation_path = state.path,
   }) or nil
 
-  local lines = {
-    "# " .. step.id .. " " .. step.title,
-    "",
-    "Step: " .. tostring(state.current) .. " / " .. tostring(#state.doc.steps),
-    "Source: " .. source_ref_label(source_ref),
-    "Status: " .. source.status_label(status),
-    "",
-  }
+  local lines = {}
+  local map = {}
+  append_mapped_line(lines, map, "# " .. step.id .. " " .. step.title, step.heading_line and {
+    kind = "markdown",
+    start_line = step.heading_line,
+    end_line = step.heading_line,
+  } or nil)
+  append_mapped_line(lines, map, "")
+  append_mapped_line(lines, map, "Step: " .. tostring(state.current) .. " / " .. tostring(#state.doc.steps))
+  append_mapped_line(lines, map, "Source: " .. source_ref_label(source_ref))
+  append_mapped_line(lines, map, "Status: " .. source.status_label(status))
+  append_mapped_line(lines, map, "")
 
-  for _, line in ipairs(render_markdown_lines(step.content, state)) do
-    table.insert(lines, line)
-  end
+  local markdown_lines, markdown_map = render_markdown_lines_with_map(step.content, step.content_line_map, state)
+  append_mapped_lines(lines, map, markdown_lines, markdown_map)
 
   append_navigation(lines, state, step, source_ref)
+  for index = #map + 1, #lines do
+    map[index] = { kind = "generated" }
+  end
 
   set_lines(state.buffers.explanation, lines)
+  set_refcopy_map(state, state.buffers.explanation, map)
   render_markdown_buffer(state.buffers.explanation, state.windows.explanation)
 end
 
@@ -934,22 +1014,28 @@ function M.render_front_page(state)
   end
   close_diff_after_window(state)
 
-  local lines = {
-    "# " .. step.title,
-    "",
-  }
+  local lines = {}
+  local map = {}
+  append_mapped_line(lines, map, "# " .. step.title, step.heading_line and {
+    kind = "markdown",
+    start_line = step.heading_line,
+    end_line = step.heading_line,
+  } or nil)
+  append_mapped_line(lines, map, "")
 
-  for _, line in ipairs(render_markdown_lines(step.content, state)) do
-    table.insert(lines, line)
-  end
+  local markdown_lines, markdown_map = render_markdown_lines_with_map(step.content, step.content_line_map, state)
+  append_mapped_lines(lines, map, markdown_lines, markdown_map)
 
   if is_diff_mode(state) then
     append_diff_coverage(lines, state)
+    for index = #map + 1, #lines do
+      map[index] = { kind = "generated" }
+    end
   end
 
-  table.insert(lines, "")
-  table.insert(lines, is_diff_mode(state) and "## Diff Targets" or "## Explanation Targets")
-  table.insert(lines, "")
+  append_mapped_line(lines, map, "")
+  append_mapped_line(lines, map, is_diff_mode(state) and "## Diff Targets" or "## Explanation Targets")
+  append_mapped_line(lines, map, "")
 
   local paths = {}
   if is_diff_mode(state) then
@@ -962,19 +1048,23 @@ function M.render_front_page(state)
     paths = collect_source_paths(state)
   end
   if #paths == 0 then
-    table.insert(lines, "- none")
+    append_mapped_line(lines, map, "- none")
   else
     for _, path in ipairs(paths) do
-      table.insert(lines, "- `" .. path .. "`")
+      append_mapped_line(lines, map, "- `" .. path .. "`")
     end
   end
 
-  table.insert(lines, "")
-  table.insert(lines, "## Table of Contents")
-  table.insert(lines, "")
+  append_mapped_line(lines, map, "")
+  append_mapped_line(lines, map, "## Table of Contents")
+  append_mapped_line(lines, map, "")
   append_front_page_toc(lines, state)
+  for index = #map + 1, #lines do
+    map[index] = { kind = "generated" }
+  end
 
   set_lines(state.buffers.front_page, lines)
+  set_refcopy_map(state, state.buffers.front_page, map)
   vim.api.nvim_win_set_buf(state.windows.code, state.buffers.front_page)
   vim.api.nvim_win_set_cursor(state.windows.code, { 1, 0 })
   state.diff_view_path = nil
@@ -1018,6 +1108,8 @@ function M.render_source(state)
 
     set_lines(state.buffers.diff_before, model.before_lines)
     set_lines(state.buffers.diff_after, model.after_lines)
+    set_refcopy_map(state, state.buffers.diff_before, build_diff_ref_map(model, file.path, "old"))
+    set_refcopy_map(state, state.buffers.diff_after, build_diff_ref_map(model, file.path, "new"))
 
     local before_count = math.max(1, vim.api.nvim_buf_line_count(state.buffers.diff_before))
     local after_count = math.max(1, vim.api.nvim_buf_line_count(state.buffers.diff_after))
@@ -1102,6 +1194,7 @@ function M.render_source(state)
   state.diff_view_mode = nil
 
   local buf = vim.api.nvim_win_get_buf(state.windows.code)
+  clear_refcopy_map(state, buf)
   local line_count = vim.api.nvim_buf_line_count(buf)
   local start_line = math.max(1, math.min(source_ref.start_line, line_count))
   local end_line = math.max(start_line, math.min(source_ref.end_line or source_ref.start_line, line_count))

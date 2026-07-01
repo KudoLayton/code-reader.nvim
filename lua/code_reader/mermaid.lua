@@ -145,13 +145,23 @@ local function render_block(block, opts)
   return split_lines(output:gsub("%s+$", ""))
 end
 
-function M.render_lines(lines, opts)
+local function render_lines_with_map(lines, opts, line_map)
   opts = opts or {}
   if opts.enabled == false then
-    return lines
+    local disabled_map = line_map and {} or nil
+    if disabled_map then
+      for index = 1, #lines do
+        table.insert(disabled_map, {
+          start_line = line_map[index],
+          end_line = line_map[index],
+        })
+      end
+    end
+    return lines, disabled_map
   end
 
   local result = {}
+  local result_map = line_map and {} or nil
   local index = 1
 
   while index <= #lines do
@@ -175,24 +185,56 @@ function M.render_lines(lines, opts)
         if rendered then
           for _, rendered_line in ipairs(rendered) do
             table.insert(result, rendered_line)
+            if result_map then
+              table.insert(result_map, {
+                start_line = line_map[index],
+                end_line = line_map[close_index],
+              })
+            end
           end
         else
           for copy_index = index, close_index do
             table.insert(result, lines[copy_index])
+            if result_map then
+              table.insert(result_map, {
+                start_line = line_map[copy_index],
+                end_line = line_map[copy_index],
+              })
+            end
           end
         end
         index = close_index + 1
       else
         table.insert(result, line)
+        if result_map then
+          table.insert(result_map, {
+            start_line = line_map[index],
+            end_line = line_map[index],
+          })
+        end
         index = index + 1
       end
     else
       table.insert(result, line)
+      if result_map then
+        table.insert(result_map, {
+          start_line = line_map[index],
+          end_line = line_map[index],
+        })
+      end
       index = index + 1
     end
   end
 
-  return result
+  return result, result_map
+end
+
+function M.render_lines(lines, opts)
+  return render_lines_with_map(lines, opts)
+end
+
+function M.render_lines_with_map(lines, line_map, opts)
+  return render_lines_with_map(lines, opts, line_map)
 end
 
 function M.default_command()

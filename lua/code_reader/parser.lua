@@ -55,10 +55,12 @@ end
 local function split_sections(lines, start_index)
   local sections = {}
   local current = {}
+  local current_start = nil
 
   local function flush()
     local has_content = false
-    for _, line in ipairs(current) do
+    for _, item in ipairs(current) do
+      local line = item.text
       if trim(line) ~= "" then
         has_content = true
         break
@@ -66,9 +68,13 @@ local function split_sections(lines, start_index)
     end
 
     if has_content then
-      table.insert(sections, current)
+      table.insert(sections, {
+        lines = current,
+        start_line = current_start,
+      })
     end
     current = {}
+    current_start = nil
   end
 
   for index = start_index, #lines do
@@ -76,7 +82,11 @@ local function split_sections(lines, start_index)
     if trim(line) == "---" then
       flush()
     else
-      table.insert(current, line)
+      current_start = current_start or index
+      table.insert(current, {
+        text = line,
+        line = index,
+      })
     end
   end
 
@@ -322,17 +332,38 @@ end
 
 local function section_content(lines, heading_index)
   local content = {}
-  for index, line in ipairs(lines) do
+  local line_map = {}
+  for index, item in ipairs(lines) do
     if index ~= heading_index then
-      table.insert(content, line)
+      table.insert(content, item.text)
+      table.insert(line_map, item.line)
     end
   end
-  return table.concat(content, "\n"):gsub("^%s*\n", ""):gsub("\n%s*$", "")
+
+  local first = 1
+  while first <= #content and trim(content[first]) == "" do
+    first = first + 1
+  end
+  local last = #content
+  while last >= first and trim(content[last]) == "" do
+    last = last - 1
+  end
+  if first > last then
+    return "", {}
+  end
+
+  local trimmed = {}
+  local trimmed_map = {}
+  for index = first, last do
+    table.insert(trimmed, content[index])
+    table.insert(trimmed_map, line_map[index])
+  end
+  return table.concat(trimmed, "\n"), trimmed_map
 end
 
 local function first_non_empty_index(lines)
-  for index, line in ipairs(lines) do
-    if trim(line) ~= "" then
+  for index, item in ipairs(lines) do
+    if trim(item.text) ~= "" then
       return index
     end
   end
@@ -340,22 +371,33 @@ end
 
 local function without_line(lines, remove_index)
   local result = {}
-  for index, line in ipairs(lines) do
+  for index, item in ipairs(lines) do
     if index ~= remove_index then
-      table.insert(result, line)
+      table.insert(result, item)
     end
   end
   return result
 end
 
-local function parse_step(lines, index)
+local function item_texts(items)
+  local lines = {}
+  for _, item in ipairs(items) do
+    table.insert(lines, item.text)
+  end
+  return lines
+end
+
+local function parse_step(section, index)
+  local lines = section.lines or {}
   local marker_index = index == 1 and first_non_empty_index(lines) or nil
-  local is_front_page = marker_index and trim(lines[marker_index]) == FRONT_PAGE_MARKER
+  local is_front_page = marker_index and trim(lines[marker_index].text) == FRONT_PAGE_MARKER
   local step_lines = is_front_page and without_line(lines, marker_index) or lines
-  local heading = parse_heading(step_lines)
+  local step_texts = item_texts(step_lines)
+  local heading = parse_heading(step_texts)
   local id = heading and heading.id or tostring(index)
   local title = heading and heading.title or ("Step " .. tostring(index))
   local depth = heading and heading.level or count_numeric_depth(id)
+  local content, content_line_map = section_content(step_lines, heading and heading.index)
 
   if is_front_page then
     id = "front"
@@ -373,10 +415,14 @@ local function parse_step(lines, index)
     id = id,
     title = title,
     depth = depth,
-    body = table.concat(step_lines, "\n"),
-    content = section_content(step_lines, heading and heading.index),
-    sources = parse_sources(step_lines),
-    diff_refs = parse_diff_refs(step_lines),
+    body = table.concat(step_texts, "\n"),
+    content = content,
+    content_line_map = content_line_map,
+    heading_line = heading and step_lines[heading.index] and step_lines[heading.index].line or nil,
+    start_line = section.start_line,
+    end_line = step_lines[#step_lines] and step_lines[#step_lines].line or section.start_line,
+    sources = parse_sources(step_texts),
+    diff_refs = parse_diff_refs(step_texts),
   }
 end
 
