@@ -6,6 +6,7 @@ Use this reference before writing any `code-reader.nvim` explanation markdown.
 
 - Write explanation prose in the language the user primarily uses. If the user explicitly requests a language, use that language.
 - Keep code identifiers, file paths, source ranges, diff refs, link targets, and protocol URLs exactly as they appear in the project.
+- Users may provide references copied from code-reader.nvim with `:CodeReaderCopyRef`. Treat `path#Lx`, `path#Lx-Ly`, `path#Hn`, and `path#Hn@old/new:Lx-Ly` values as direct targets for the explanation unless the user asks to broaden or narrow the scope.
 - Use YAML frontmatter at the top:
 
 ```markdown

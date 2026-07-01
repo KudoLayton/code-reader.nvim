@@ -10,12 +10,13 @@ Read `../../references/code-reader-markdown-format.md` before writing.
 ## Workflow
 
 1. Inspect the unified diff before writing prose.
-2. Identify files, file-local hunk ids, changed behavior, and review order.
-3. Draft a `type: code-reader-diff` markdown file with a front page and numbered hunk explanation steps.
-4. Put `Diff: path#Hn` or a side-specific range reference on every concrete step.
-5. Split large hunks, whole-file additions, or dense rewrites into multiple focused range steps.
-6. Cover every hunk unless the user explicitly asks for a partial explanation.
-7. Run the shared validator and fix every reported issue before finishing.
+2. If the user provides references copied with `:CodeReaderCopyRef`, use those `path#Hn` or `path#Hn@old/new:Lx-Ly` ranges as direct diff targets unless the user asks for a broader review.
+3. Identify files, file-local hunk ids, changed behavior, and review order.
+4. Draft a `type: code-reader-diff` markdown file with a front page and numbered hunk explanation steps.
+5. Put `Diff: path#Hn` or a side-specific range reference on every concrete step.
+6. Split large hunks, whole-file additions, or dense rewrites into multiple focused range steps.
+7. Cover every hunk unless the user explicitly asks for a partial explanation.
+8. Run the shared validator and fix every reported issue before finishing.
 
 ## Output Defaults
 
