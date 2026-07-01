@@ -404,6 +404,25 @@ local function reveal_window_top(state, win, smooth)
         return
       end
     end
+    local mini_animate = rawget(_G, "MiniAnimate")
+    if type(mini_animate) ~= "table" then
+      pcall(function()
+        mini_animate = require("mini.animate")
+      end)
+    end
+    if
+      type(mini_animate) == "table"
+      and type(mini_animate.is_active) == "function"
+      and type(mini_animate.execute_after) == "function"
+      and mini_animate.is_active("scroll")
+    then
+      local called = pcall(mini_animate.execute_after, "scroll", function()
+        reveal_window_line(win, "zt")
+      end)
+      if called then
+        return
+      end
+    end
   end
   reveal_window_line(win, "zt")
 end
