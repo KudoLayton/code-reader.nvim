@@ -20,6 +20,20 @@ package.preload["render-markdown"] = function()
   }
 end
 
+local smooth_scroll_calls = {}
+package.preload["neoscroll"] = function()
+  return {
+    zt = function(opts)
+      table.insert(smooth_scroll_calls, opts or {})
+      if opts and opts.winid then
+        vim.api.nvim_win_call(opts.winid, function()
+          vim.cmd("normal! zt")
+        end)
+      end
+    end,
+  }
+end
+
 local function has_syntax_highlight(buf, line_text, language)
   local lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
   for index, line in ipairs(lines) do
@@ -268,6 +282,13 @@ eq(#render_markdown_calls > 0, true, "render-markdown integration called")
 eq(render_markdown_calls[#render_markdown_calls].buf, state.buffers.explanation, "render-markdown explanation buffer")
 eq(render_markdown_calls[#render_markdown_calls].event, "CodeReader", "render-markdown event")
 
+local smooth_before_same_file = #smooth_scroll_calls
+code_reader.goto_step(3)
+eq(#smooth_scroll_calls, smooth_before_same_file + 1, "same source file uses smooth scroll")
+eq(smooth_scroll_calls[#smooth_scroll_calls].winid, state.windows.code, "source smooth scroll targets code window")
+code_reader.goto_step(2)
+eq(#smooth_scroll_calls, smooth_before_same_file + 2, "same source file smooth scroll works backward")
+
 code_reader.prev()
 eq(state.current, 1, "previous step")
 eq(vim.api.nvim_buf_get_name(vim.api.nvim_win_get_buf(state.windows.code)):match("code%-reader://front%-page$") ~= nil, true, "previous step returns front page")
@@ -282,6 +303,7 @@ eq(normalize_path(vim.api.nvim_buf_get_name(vim.api.nvim_win_get_buf(state.windo
 eq(vim.api.nvim_win_get_cursor(state.windows.code)[1], 45, "toc sync code cursor")
 eq(window_view(state.windows.code).topline, 45, "toc sync code viewport")
 eq(vim.api.nvim_get_current_win(), state.windows.toc, "toc focus stays")
+eq(#smooth_scroll_calls, smooth_before_same_file + 2, "different source file skips smooth scroll")
 
 code_reader.goto_step(3)
 local explanation_lines = vim.api.nvim_buf_get_lines(state.buffers.explanation, 0, -1, false)

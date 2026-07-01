@@ -15,6 +15,20 @@ local function valid_win(win)
   return win and vim.api.nvim_win_is_valid(win)
 end
 
+local smooth_scroll_calls = {}
+package.preload["neoscroll"] = function()
+  return {
+    zt = function(opts)
+      table.insert(smooth_scroll_calls, opts or {})
+      if opts and opts.winid then
+        vim.api.nvim_win_call(opts.winid, function()
+          vim.cmd("normal! zt")
+        end)
+      end
+    end,
+  }
+end
+
 local function window_view(win)
   local current = vim.api.nvim_get_current_win()
   vim.api.nvim_set_current_win(win)
@@ -448,7 +462,11 @@ for _, mark in ipairs(before_marks) do
 end
 eq(has_word_mark, true, "modified word highlight")
 
+local smooth_before_same_diff = #smooth_scroll_calls
 code_reader.goto_step(4)
+eq(#smooth_scroll_calls, smooth_before_same_diff + 2, "same diff file two-column uses smooth scroll")
+eq(smooth_scroll_calls[#smooth_scroll_calls - 1].winid, state.windows.code, "before diff smooth scroll targets code window")
+eq(smooth_scroll_calls[#smooth_scroll_calls].winid, state.windows.diff_after, "after diff smooth scroll targets after window")
 local range_explanation = table.concat(vim.api.nvim_buf_get_lines(state.buffers.explanation, 0, -1, false), "\n")
 contains(range_explanation, "Diff: src/app.lua#H1@new:padding=1", "range diff source header")
 contains(range_explanation, "After: `src/app.lua#L1-L6`", "range after label")
@@ -537,6 +555,11 @@ local deleted_text = table.concat(vim.api.nvim_buf_get_lines(vim.api.nvim_win_ge
 contains(deleted_text, "- local obsolete = true", "deleted file content in primary code window")
 eq(vim.api.nvim_win_get_cursor(state.windows.code)[1], 11, "deleted file range cursor moves to focused deletion")
 eq(window_view(state.windows.code).topline, 11, "deleted file viewport starts at focused deletion")
+
+local smooth_before_single_column = #smooth_scroll_calls
+code_reader.goto_step(6)
+eq(#smooth_scroll_calls, smooth_before_single_column + 1, "same single-column diff uses smooth scroll")
+eq(smooth_scroll_calls[#smooth_scroll_calls].winid, state.windows.code, "single-column diff smooth scroll targets code window")
 
 code_reader.goto_step(2)
 local closed_after = state.windows.diff_after

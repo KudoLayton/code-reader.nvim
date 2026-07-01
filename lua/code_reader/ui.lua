@@ -160,6 +160,10 @@ local function valid_buf(buf)
   return buf and vim.api.nvim_buf_is_valid(buf)
 end
 
+local function normalize_path(path)
+  return (path or ""):gsub("\\", "/")
+end
+
 local clear_diff_window_bindings
 
 local function close_diff_after_window(state)
@@ -212,6 +216,33 @@ local function reveal_window_line(win, command)
   call_in_window(win, function()
     vim.cmd("normal! " .. command)
   end)
+end
+
+local function smooth_scroll_enabled(state)
+  local config = state and state.options and state.options.smooth_scroll
+  if config == false then
+    return false
+  end
+  if type(config) == "table" and config.enabled == false then
+    return false
+  end
+  return true
+end
+
+local function reveal_window_top(state, win, smooth)
+  if smooth and smooth_scroll_enabled(state) then
+    local ok, neoscroll = pcall(require, "neoscroll")
+    if ok and type(neoscroll.zt) == "function" then
+      local config = state.options.smooth_scroll
+      local opts = type(config) == "table" and vim.tbl_extend("force", config, { winid = win }) or { winid = win }
+      opts.enabled = nil
+      local called = pcall(neoscroll.zt, opts)
+      if called then
+        return
+      end
+    end
+  end
+  reveal_window_line(win, "zt")
 end
 
 local function ensure_code_window(state)
@@ -946,7 +977,9 @@ function M.render_front_page(state)
   set_lines(state.buffers.front_page, lines)
   vim.api.nvim_win_set_buf(state.windows.code, state.buffers.front_page)
   vim.api.nvim_win_set_cursor(state.windows.code, { 1, 0 })
-  reveal_window_line(state.windows.code, "zt")
+  state.diff_view_path = nil
+  state.diff_view_mode = nil
+  reveal_window_top(state, state.windows.code, false)
   render_markdown_buffer(state.buffers.front_page, state.windows.code)
 end
 
@@ -997,26 +1030,39 @@ function M.render_source(state)
       if not ensure_diff_after_window(state) then
         return
       end
+      local smooth_before = state.diff_view_path == file.path
+        and state.diff_view_mode == "two-column"
+        and vim.api.nvim_win_get_buf(state.windows.code) == state.buffers.diff_before
+      local smooth_after = state.diff_view_path == file.path
+        and state.diff_view_mode == "two-column"
+        and valid_win(state.windows.diff_after)
+        and vim.api.nvim_win_get_buf(state.windows.diff_after) == state.buffers.diff_after
       clear_diff_window_bindings(state)
       vim.api.nvim_win_set_buf(state.windows.code, state.buffers.diff_before)
       vim.api.nvim_win_set_buf(state.windows.diff_after, state.buffers.diff_after)
       cursor_line = math.max(1, math.min(cursor_line, math.min(before_count, after_count)))
       vim.api.nvim_win_set_cursor(state.windows.code, { cursor_line, 0 })
       vim.api.nvim_win_set_cursor(state.windows.diff_after, { cursor_line, 0 })
-      reveal_window_line(state.windows.code, "zt")
-      reveal_window_line(state.windows.diff_after, "zt")
+      reveal_window_top(state, state.windows.code, smooth_before)
+      reveal_window_top(state, state.windows.diff_after, smooth_after)
       set_window_bindings(state.windows.code, true)
       set_window_bindings(state.windows.diff_after, true)
+      state.diff_view_mode = "two-column"
     else
       if not ensure_code_window(state) then
         return
       end
+      local smooth_single = state.diff_view_path == file.path
+        and state.diff_view_mode == "single-column"
+        and vim.api.nvim_win_get_buf(state.windows.code) == primary_buf
       close_diff_after_window(state)
       cursor_line = math.max(1, math.min(single_diff_focus_line(model, primary_side), primary_count))
       vim.api.nvim_win_set_buf(state.windows.code, primary_buf)
       vim.api.nvim_win_set_cursor(state.windows.code, { cursor_line, 0 })
-      reveal_window_line(state.windows.code, "zt")
+      reveal_window_top(state, state.windows.code, smooth_single)
+      state.diff_view_mode = "single-column"
     end
+    state.diff_view_path = file.path
 
     apply_diff_highlights(model, state.buffers.diff_before, state.buffers.diff_after, state)
     syntax.highlight_diff(state.buffers.diff_before, model.rows, "before", file.path, model.gutter_width or 0, state.options)
@@ -1042,6 +1088,7 @@ function M.render_source(state)
 
   local current_buf = vim.api.nvim_win_get_buf(state.windows.code)
   local current_path = vim.fn.fnamemodify(vim.api.nvim_buf_get_name(current_buf), ":p")
+  local smooth = normalize_path(current_path) == normalize_path(path)
   if current_path ~= path then
     local ok, err = call_in_window(state.windows.code, function()
       vim.cmd("keepalt edit " .. vim.fn.fnameescape(path))
@@ -1051,6 +1098,8 @@ function M.render_source(state)
       return
     end
   end
+  state.diff_view_path = nil
+  state.diff_view_mode = nil
 
   local buf = vim.api.nvim_win_get_buf(state.windows.code)
   local line_count = vim.api.nvim_buf_line_count(buf)
@@ -1058,7 +1107,7 @@ function M.render_source(state)
   local end_line = math.max(start_line, math.min(source_ref.end_line or source_ref.start_line, line_count))
 
   vim.api.nvim_win_set_cursor(state.windows.code, { start_line, 0 })
-  reveal_window_line(state.windows.code, "zt")
+  reveal_window_top(state, state.windows.code, smooth)
 
   vim.api.nvim_buf_clear_namespace(buf, namespace, 0, -1)
   for line = 1, line_count do

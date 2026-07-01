@@ -165,6 +165,16 @@ require("code_reader").setup({
 
 Set `dimming = false` to keep the current explanation range highlighted without dimming the rest of the code. Use `require("code_reader").toggle_dimming()` to toggle dimming from Lua, or pass `true`/`false` to set it explicitly.
 
+When [neoscroll.nvim](https://github.com/karb94/neoscroll.nvim) is installed, Code Reader uses it automatically for same-buffer source and diff range movement. File switches and layout changes still jump immediately. Disable this integration with:
+
+```lua
+require("code_reader").setup({
+  smooth_scroll = {
+    enabled = false,
+  },
+})
+```
+
 Enable debug logging when you need to diagnose rendering behavior on another machine:
 
 ```lua

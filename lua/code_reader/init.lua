@@ -12,6 +12,9 @@ local state = {
     focus = true,
     dimming = true,
     max_dim_lines = 5000,
+    smooth_scroll = {
+      enabled = "auto",
+    },
     mermaid = {
       enabled = true,
       timeout_ms = 2000,
@@ -165,6 +168,8 @@ function M.open(path)
   state.focus = state.options.focus ~= false
   state.dimming = state.options.dimming ~= false
   state.toc_line_to_step = {}
+  state.diff_view_path = nil
+  state.diff_view_mode = nil
 
   ui.open_layout(state)
   set_buffer_keymaps()
@@ -253,6 +258,8 @@ function M.close()
   state.diff = nil
   state.current = nil
   state.toc_line_to_step = nil
+  state.diff_view_path = nil
+  state.diff_view_mode = nil
   state.windows = nil
   state.buffers = nil
 end
