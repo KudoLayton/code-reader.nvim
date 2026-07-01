@@ -148,10 +148,21 @@ Commands:
 - `:CodeReaderToggleDimming` toggles dimming for non-focused source and diff lines.
 - `:CodeReaderToggleFocus` toggles legacy focus mode, which also affects dimming.
 - `:CodeReaderClose` closes the explanation and TOC views and clears Code Reader highlights.
+- `:'<,'>CodeReaderCopyRef [register]` copies the selected visual range as an AI-ready reference.
 
 Inside the explanation panel, `[r` and `]r` move between steps. Press `<CR>` on links in the `Navigation` list to jump to related steps or open the source. Navigation links show source or diff movement hints such as `(↑3)`, `(↓8)`, `(↗ src/file.lua#L10-L20)`, or `(↓8 src/file.lua#H2)`. Press `q` in the explanation or TOC panel to close Code Reader.
 
 In the TOC panel, press `<CR>` to jump to the selected step. The explanation view and code view update together while focus stays in the TOC. Press `<CR>` on an internal step link or a `treesitter://` symbol link in the explanation panel to activate it.
+
+Visual selections can be copied in the same reference style as refcopy.nvim:
+
+```lua
+vim.keymap.set("x", "<leader>ry", ":CodeReaderCopyRef<CR>", {
+  desc = "Copy Code Reader reference",
+})
+```
+
+The command copies regular source selections as `path#Lx-Ly`, diff views as logical hunk references such as `src/app.lua#H1@new:L3-L5`, and markdown views as the original explanation file range when the selection maps cleanly to source Markdown. Mixed generated text falls back to copying the selected text.
 
 ## Configuration
 

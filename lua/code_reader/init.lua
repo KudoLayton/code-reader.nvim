@@ -4,6 +4,7 @@ local source = require("code_reader.source")
 local links = require("code_reader.links")
 local symbols = require("code_reader.symbols")
 local diff = require("code_reader.diff")
+local refcopy = require("code_reader.refcopy")
 
 local M = {}
 
@@ -168,6 +169,7 @@ function M.open(path)
   state.focus = state.options.focus ~= false
   state.dimming = state.options.dimming ~= false
   state.toc_line_to_step = {}
+  state.refcopy_maps = {}
   state.diff_view_path = nil
   state.diff_view_mode = nil
 
@@ -258,6 +260,7 @@ function M.close()
   state.diff = nil
   state.current = nil
   state.toc_line_to_step = nil
+  state.refcopy_maps = nil
   state.diff_view_path = nil
   state.diff_view_mode = nil
   state.windows = nil
@@ -307,6 +310,11 @@ end
 
 function M.state()
   return state
+end
+
+function M.copy_ref(opts)
+  opts = opts or {}
+  return refcopy.copy(state, opts)
 end
 
 return M

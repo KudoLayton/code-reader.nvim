@@ -47,3 +47,15 @@ vim.api.nvim_create_user_command("CodeReaderClose", function()
 end, {
   desc = "Close Code Reader views",
 })
+
+vim.api.nvim_create_user_command("CodeReaderCopyRef", function(opts)
+  require("code_reader").copy_ref({
+    line1 = opts.line1,
+    line2 = opts.line2,
+    register = opts.args ~= "" and opts.args or nil,
+  })
+end, {
+  range = true,
+  nargs = "?",
+  desc = "Copy a Code Reader reference for the selected range",
+})
