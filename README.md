@@ -4,6 +4,8 @@ Code Reader is a Neovim plugin for reading AI-authored code and diff walkthrough
 
 Use it when an AI assistant has produced a structured walkthrough and you want to review the implementation in Neovim without jumping between Markdown, source files, and patches by hand.
 
+<img src="assets/code_reader.png" alt="Code Reader diff walkthrough in Neovim" width="960">
+
 ## Features
 
 - Source walkthroughs driven by `type: code-reader` Markdown files.
