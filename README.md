@@ -111,7 +111,7 @@ Open the diff walkthrough from the same project root:
 :CodeReaderOpen .code_reader/diffs/request-update.md
 ```
 
-In the demo, check that the source, explanation, and TOC views move together. Use `]r` and `[r` to move between steps, `<CR>` on TOC entries or explanation links to jump, and `q` in the explanation or TOC panel to close Code Reader.
+In the demo, check that step navigation updates the source or diff target while the explanation and TOC keep their own cursors. Use `]r` and `[r` to move between steps, `<CR>` on TOC entries or explanation links to jump, and `q` in the explanation or TOC panel to close Code Reader.
 
 ## Usage
 
@@ -133,7 +133,7 @@ Commands:
 
 Inside the explanation panel, `[r` and `]r` move between steps. Press `<CR>` on links in the `Navigation` list to jump to related steps or open the source. Navigation links show source or diff movement hints such as `(↑3)`, `(↓8)`, `(↗ src/file.lua#L10-L20)`, or `(↓8 src/file.lua#H2)`.
 
-In the TOC panel, press `<CR>` to jump to the selected step. The explanation view and code view update together while focus stays in the TOC. Press `<CR>` on an internal step link or a `treesitter://` symbol link in the explanation panel to activate it.
+In the TOC panel, moving the cursor only moves the TOC cursor. Press `<CR>` to jump to the selected step; the explanation and code views update to that step while focus stays in the TOC. Press `<CR>` on an internal step link or a `treesitter://` symbol link in the explanation panel to activate it.
 
 Visual selections can be copied in the same reference style as refcopy.nvim:
 

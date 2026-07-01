@@ -222,11 +222,26 @@ local function normalize_path(path)
   return (path or ""):gsub("\\", "/")
 end
 
-local clear_diff_window_bindings
+local sync_augroup = vim.api.nvim_create_augroup("CodeReaderDiffSync", { clear = false })
+
+local clear_managed_window_bindings
+
+local function managed_windows(state)
+  local wins = {}
+  if not (state and state.windows) then
+    return wins
+  end
+  for _, name in ipairs({ "code", "diff_after", "explanation", "toc" }) do
+    if state.windows[name] then
+      table.insert(wins, state.windows[name])
+    end
+  end
+  return wins
+end
 
 local function close_diff_after_window(state)
-  if clear_diff_window_bindings then
-    clear_diff_window_bindings(state)
+  if clear_managed_window_bindings then
+    clear_managed_window_bindings(state)
   end
   local win = state.windows and state.windows.diff_after
   if valid_win(win) then
@@ -262,12 +277,102 @@ local function set_window_bindings(win, enabled)
   vim.api.nvim_set_option_value("cursorbind", enabled, { win = win })
 end
 
-clear_diff_window_bindings = function(state)
-  if not (state and state.windows) then
+clear_managed_window_bindings = function(state)
+  for _, win in ipairs(managed_windows(state)) do
+    set_window_bindings(win, false)
+  end
+end
+
+local function diff_sync_pair(state, source_win)
+  if not (state and state.diff_view_mode == "two-column" and state.windows and state.buffers) then
+    return nil, nil
+  end
+  if not (valid_win(state.windows.code) and valid_win(state.windows.diff_after)) then
+    return nil, nil
+  end
+  if vim.api.nvim_win_get_buf(state.windows.code) ~= state.buffers.diff_before then
+    return nil, nil
+  end
+  if vim.api.nvim_win_get_buf(state.windows.diff_after) ~= state.buffers.diff_after then
+    return nil, nil
+  end
+  if source_win == state.windows.code then
+    return state.windows.code, state.windows.diff_after
+  end
+  if source_win == state.windows.diff_after then
+    return state.windows.diff_after, state.windows.code
+  end
+  return nil, nil
+end
+
+local function sync_diff_window_from(state, source_win)
+  if not state or state.diff_syncing then
     return
   end
-  set_window_bindings(state.windows.code, false)
-  set_window_bindings(state.windows.diff_after, false)
+  local from_win, to_win = diff_sync_pair(state, source_win)
+  if not (from_win and to_win) then
+    return
+  end
+
+  state.diff_syncing = true
+  local ok = pcall(function()
+    local line, col = unpack(vim.api.nvim_win_get_cursor(from_win))
+    local target_count = math.max(1, vim.api.nvim_buf_line_count(vim.api.nvim_win_get_buf(to_win)))
+    local target_line = math.max(1, math.min(line, target_count))
+    local source_view = nil
+
+    call_in_window(from_win, function()
+      source_view = vim.fn.winsaveview()
+    end)
+
+    call_in_window(to_win, function()
+      vim.api.nvim_win_set_cursor(to_win, { target_line, col })
+      if source_view then
+        source_view.lnum = target_line
+        vim.fn.winrestview(source_view)
+      end
+    end)
+  end)
+  state.diff_syncing = false
+  return ok
+end
+
+local function clear_diff_sync(state)
+  if not (state and state.diff_sync_autocmds) then
+    return
+  end
+  for _, autocmd in ipairs(state.diff_sync_autocmds) do
+    pcall(vim.api.nvim_del_autocmd, autocmd)
+  end
+  state.diff_sync_autocmds = nil
+  state.diff_syncing = nil
+end
+
+local function setup_diff_sync(state)
+  clear_diff_sync(state)
+  if not (state and state.buffers and valid_buf(state.buffers.diff_before) and valid_buf(state.buffers.diff_after)) then
+    return
+  end
+  state.diff_sync_autocmds = {}
+
+  local function sync_current_window()
+    sync_diff_window_from(state, vim.api.nvim_get_current_win())
+  end
+
+  table.insert(state.diff_sync_autocmds, vim.api.nvim_create_autocmd({ "CursorMoved", "CursorMovedI" }, {
+    group = sync_augroup,
+    buffer = state.buffers.diff_before,
+    callback = sync_current_window,
+  }))
+  table.insert(state.diff_sync_autocmds, vim.api.nvim_create_autocmd({ "CursorMoved", "CursorMovedI" }, {
+    group = sync_augroup,
+    buffer = state.buffers.diff_after,
+    callback = sync_current_window,
+  }))
+  table.insert(state.diff_sync_autocmds, vim.api.nvim_create_autocmd("WinScrolled", {
+    group = sync_augroup,
+    callback = sync_current_window,
+  }))
 end
 
 local function reveal_window_line(win, command)
@@ -866,6 +971,8 @@ function M.open_layout(state)
   vim.api.nvim_win_set_buf(state.windows.toc, state.buffers.toc)
   vim.api.nvim_win_set_height(state.windows.toc, math.max(8, math.floor(vim.o.lines * 0.22)))
 
+  clear_managed_window_bindings(state)
+  setup_diff_sync(state)
   vim.api.nvim_set_current_win(state.windows.explanation)
 end
 
@@ -1129,7 +1236,7 @@ function M.render_source(state)
         and state.diff_view_mode == "two-column"
         and valid_win(state.windows.diff_after)
         and vim.api.nvim_win_get_buf(state.windows.diff_after) == state.buffers.diff_after
-      clear_diff_window_bindings(state)
+      clear_managed_window_bindings(state)
       vim.api.nvim_win_set_buf(state.windows.code, state.buffers.diff_before)
       vim.api.nvim_win_set_buf(state.windows.diff_after, state.buffers.diff_after)
       cursor_line = math.max(1, math.min(cursor_line, math.min(before_count, after_count)))
@@ -1137,9 +1244,9 @@ function M.render_source(state)
       vim.api.nvim_win_set_cursor(state.windows.diff_after, { cursor_line, 0 })
       reveal_window_top(state, state.windows.code, smooth_before)
       reveal_window_top(state, state.windows.diff_after, smooth_after)
-      set_window_bindings(state.windows.code, true)
-      set_window_bindings(state.windows.diff_after, true)
+      clear_managed_window_bindings(state)
       state.diff_view_mode = "two-column"
+      sync_diff_window_from(state, state.windows.code)
     else
       if not ensure_code_window(state) then
         return
@@ -1168,7 +1275,7 @@ function M.render_source(state)
   if not ensure_code_window(state) then
     return
   end
-  clear_diff_window_bindings(state)
+  clear_managed_window_bindings(state)
   close_diff_after_window(state)
 
   local source_ref = step.sources[1]
@@ -1232,6 +1339,11 @@ function M.restore_code_buffer(state)
   if current_buf == front_page_buf or current_buf == diff_before_buf or current_buf == diff_after_buf then
     pcall(vim.api.nvim_win_set_buf, code_win, code_buf)
   end
+end
+
+function M.clear_diff_sync(state)
+  clear_diff_sync(state)
+  clear_managed_window_bindings(state)
 end
 
 function M.reset_explanation_view(state)

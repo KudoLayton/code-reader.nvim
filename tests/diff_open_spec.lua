@@ -40,7 +40,9 @@ end
 local function sync_window_to_line(win, line)
   vim.api.nvim_set_current_win(win)
   vim.api.nvim_win_set_cursor(win, { line, 0 })
+  vim.cmd("doautocmd CursorMoved")
   vim.cmd("normal! zt")
+  vim.cmd("doautocmd WinScrolled")
   vim.cmd("redraw")
 end
 
@@ -415,10 +417,14 @@ local debug_log = table.concat(vim.fn.readfile(log_file), "\n")
 contains(debug_log, "syntax.diff", "debug log records diff syntax event")
 contains(debug_log, "path=src/app.lua", "debug log records diff path")
 contains(debug_log, "language=lua", "debug log records diff language")
-eq(vim.api.nvim_get_option_value("scrollbind", { win = state.windows.code }), true, "before diff scrollbind enabled")
-eq(vim.api.nvim_get_option_value("scrollbind", { win = state.windows.diff_after }), true, "after diff scrollbind enabled")
-eq(vim.api.nvim_get_option_value("cursorbind", { win = state.windows.code }), true, "before diff cursorbind enabled")
-eq(vim.api.nvim_get_option_value("cursorbind", { win = state.windows.diff_after }), true, "after diff cursorbind enabled")
+eq(vim.api.nvim_get_option_value("scrollbind", { win = state.windows.code }), false, "before diff native scrollbind disabled")
+eq(vim.api.nvim_get_option_value("scrollbind", { win = state.windows.diff_after }), false, "after diff native scrollbind disabled")
+eq(vim.api.nvim_get_option_value("cursorbind", { win = state.windows.code }), false, "before diff native cursorbind disabled")
+eq(vim.api.nvim_get_option_value("cursorbind", { win = state.windows.diff_after }), false, "after diff native cursorbind disabled")
+eq(vim.api.nvim_get_option_value("scrollbind", { win = state.windows.explanation }), false, "explanation native scrollbind disabled")
+eq(vim.api.nvim_get_option_value("cursorbind", { win = state.windows.explanation }), false, "explanation native cursorbind disabled")
+eq(vim.api.nvim_get_option_value("scrollbind", { win = state.windows.toc }), false, "toc native scrollbind disabled")
+eq(vim.api.nvim_get_option_value("cursorbind", { win = state.windows.toc }), false, "toc native cursorbind disabled")
 eq(vim.api.nvim_win_get_cursor(state.windows.code)[1], vim.api.nvim_win_get_cursor(state.windows.diff_after)[1], "initial diff cursors match")
 eq(window_view(state.windows.code).topline, window_view(state.windows.diff_after).topline, "initial diff toplines match")
 
@@ -429,6 +435,25 @@ eq(window_view(state.windows.diff_after).topline, window_view(state.windows.code
 sync_window_to_line(state.windows.diff_after, 3)
 eq(vim.api.nvim_win_get_cursor(state.windows.code)[1], 3, "before diff cursor follows after")
 eq(window_view(state.windows.code).topline, window_view(state.windows.diff_after).topline, "before diff viewport follows after")
+
+local current_step_before_toc_move = state.current
+local before_cursor_before_toc_move = vim.api.nvim_win_get_cursor(state.windows.code)[1]
+local after_cursor_before_toc_move = vim.api.nvim_win_get_cursor(state.windows.diff_after)[1]
+local explanation_cursor_before_toc_move = vim.api.nvim_win_get_cursor(state.windows.explanation)[1]
+vim.api.nvim_set_current_win(state.windows.toc)
+vim.api.nvim_win_set_cursor(state.windows.toc, { 4, 0 })
+vim.cmd("doautocmd CursorMoved")
+vim.cmd("redraw")
+eq(state.current, current_step_before_toc_move, "toc cursor move does not change step")
+eq(vim.api.nvim_win_get_cursor(state.windows.code)[1], before_cursor_before_toc_move, "toc cursor move does not move before diff")
+eq(vim.api.nvim_win_get_cursor(state.windows.diff_after)[1], after_cursor_before_toc_move, "toc cursor move does not move after diff")
+eq(vim.api.nvim_win_get_cursor(state.windows.explanation)[1], explanation_cursor_before_toc_move, "toc cursor move does not move explanation")
+
+code_reader.activate()
+eq(state.current, 4, "toc activation changes step")
+eq(vim.api.nvim_win_get_cursor(state.windows.code)[1], vim.api.nvim_win_get_cursor(state.windows.diff_after)[1], "toc activation moves diff cursors together")
+eq(vim.api.nvim_get_current_win(), state.windows.toc, "toc activation keeps focus")
+code_reader.goto_step(2)
 local missing_messages, missing_log = render_missing_language_notification()
 eq(#missing_messages, 1, "missing Tree-sitter parser notifies once per path")
 contains(missing_messages[1].message, "Tree-sitter parser is unavailable for cpp", "missing parser notification explains parser")

@@ -235,6 +235,7 @@ end
 
 function M.close()
   symbols.clear()
+  ui.clear_diff_sync(state)
   ui.clear_source_highlights(state)
   ui.restore_code_buffer(state)
 
@@ -263,6 +264,8 @@ function M.close()
   state.refcopy_maps = nil
   state.diff_view_path = nil
   state.diff_view_mode = nil
+  state.diff_sync_autocmds = nil
+  state.diff_syncing = nil
   state.windows = nil
   state.buffers = nil
 end
