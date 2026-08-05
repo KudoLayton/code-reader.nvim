@@ -1,6 +1,6 @@
 # Code Reader
 
-Code Reader is a Neovim plugin for reading AI-authored code and diff walkthroughs next to the files they explain. It opens a three-pane reading layout with source or before/after diff content, the current explanation step, and a navigable outline.
+Code Reader is a Neovim plugin for reading AI-authored code and diff walkthroughs next to the files they explain. It opens a three-pane reading layout with the explanation on the left, source or before/after diff content on the right, and a navigable outline below the explanation.
 
 Use it when an AI assistant has produced a structured walkthrough and you want to review the implementation in Neovim without jumping between Markdown, source files, and patches by hand.
 
@@ -44,6 +44,7 @@ Using lazy.nvim:
   name = "code-reader.nvim",
   cmd = {
     "CodeReaderOpen",
+    "CodeReaderRefresh",
     "CodeReaderNext",
     "CodeReaderPrev",
     "CodeReaderGoto",
@@ -124,6 +125,7 @@ Open a Code Reader Markdown file from the project root:
 Commands:
 
 - `:CodeReaderOpen [file]` opens the source, explanation, and TOC layout.
+- `:CodeReaderRefresh` reloads the open explanation Markdown and its linked diff while keeping the current step when its id still exists.
 - `:CodeReaderNext` and `:CodeReaderPrev` move between steps.
 - `:CodeReaderGoto {index}` jumps to a step by list index.
 - `:CodeReaderToggleDimming` toggles dimming for non-focused source and diff lines.
@@ -220,12 +222,27 @@ version: 1
 <!-- code-reader: front-page -->
 # Code Reader Overview
 
-Explain the purpose, scope, and high-level structure of this walkthrough.
+## Problem
+
+Explain the reader problem this walkthrough solves.
+
+## Expected outcome
+
+State what the reader will understand after completing the walkthrough.
+
+## Representative example
+
+Show a concise before/after input, control-flow, or behavioral example.
+
+## Architecture and reading flow
+
+Explain the relevant module roles and the order in which this walkthrough follows execution.
 
 ---
 # 1. Request lifecycle
 
 Source: `src/server.lua#L10-L30`
+Cursor: `src/server.lua#L14`
 
 Explain the top-level flow here. Continue at [[1.1|Parse request]].
 
@@ -250,13 +267,16 @@ Rules:
 - The first frontmatter block identifies the file as `type: code-reader`.
 - An optional first section can be marked as a front page with `<!-- code-reader: front-page -->`.
 - The front page has no source range. It is rendered in the code window with its main content, an automatic source-file summary, and a step TOC.
+- The front page should introduce the reader problem, expected outcome, representative example, architecture, and reading flow before detailed steps.
 - The first Markdown heading in a step becomes the step title.
 - Heading depth drives TOC nesting, so `## 1.1 ...` becomes a nested call-stack step. Nested steps are still separate `---`-delimited step blocks.
 - GitHub-style `path#Lx` and `path#Lx-Ly` references define the source range.
+- Optional `Cursor: path#Lx` moves the cursor to the explanation start inside the first Source range while the full Source range remains highlighted.
 - Optional source hashes can be appended as `path#Lx-Ly@sha256:<hash>`.
 - Obsidian-style `[[step-id]]` and `[[step-id|label]]` links jump to another step in the same explanation file.
 - Markdown links that start with `treesitter://` highlight symbols in the named source file.
 - Fenced code blocks marked as `mermaid` are rendered as text diagrams when Mermaid support is available.
+- Concrete steps follow runtime execution order. Keep each Source or Diff scope limited to the code that page explains, and split long routines into nested steps.
 
 Symbol links must always name the source path:
 
@@ -306,6 +326,7 @@ Rules:
 - Diff side-by-side views include old/new line-number gutters, `~`/`+`/`-`/`>` markers, moved-line detection, and inline highlights for modified spans.
 - Diff side-by-side views apply Tree-sitter syntax highlighting to the code portion when a parser is available for the changed file.
 - Focus mode also applies to full-file diff views: unrelated rows are dimmed while the current explanation hunk stays highlighted. Dimming is enabled by default and can be disabled with `dimming = false`.
+- Diff walkthroughs should collectively explain every hunk. Use side-specific ranges and nested steps to keep an individual page focused instead of using a broad hunk reference only to inflate coverage.
 
 ## Tests
 
@@ -325,10 +346,12 @@ nvim --headless -u NONE -l tests/mermaid_spec.lua
 nvim --headless -u NONE -l tests/health_spec.lua
 nvim --headless -u NONE -l tests/nvim_spec.lua
 nvim --headless -u NONE -l tests/open_spec.lua
+nvim --headless -u NONE -l tests/refresh_spec.lua
 nvim --headless -u NONE -l tests/diff_open_spec.lua
 nvim --headless -u NONE -l tests/smooth_scroll_spec.lua
 nvim --headless -u NONE -l tests/symbol_spec.lua
 nvim --headless -u NONE -l tests/demo_spec.lua
+nvim --headless -u NONE -l tests/authoring_validator_spec.lua
 ```
 
 Validate authored walkthrough files with:

@@ -11,6 +11,7 @@ from pathlib import Path
 
 FRONT_PAGE_MARKER = "<!-- code-reader: front-page -->"
 SOURCE_RE = re.compile(r"([\w._\-/\\]+)#L(\d+)(?:-L?(\d+))?")
+CURSOR_RE = re.compile(r"^\s*Cursor:\s*`?([\w._\-/\\]+)#L(\d+)`?\s*$")
 DIFF_RE = re.compile(r"([\w._\-/\\]+)#([Hh]\d+)(?:@([A-Za-z]+):([^\s`\]]+))?")
 STEP_LINK_RE = re.compile(r"\[\[([^\]|]+)(?:\|[^\]]+)?\]\]")
 
@@ -168,7 +169,56 @@ def validate_source_refs(project_root: Path, section_start: int, lines: list[str
 
 
 def collect_source_refs(lines: list[str]) -> list[str]:
-    return [match.group(0) for line in lines for match in SOURCE_RE.finditer(line)]
+    return [
+        match.group(0)
+        for line in lines
+        if not re.match(r"^\s*Cursor\s*:", line)
+        for match in SOURCE_RE.finditer(line)
+    ]
+
+
+def collect_cursor_refs(lines: list[str]) -> list[tuple[str, int] | None]:
+    refs: list[tuple[str, int] | None] = []
+    for line in lines:
+        if re.match(r"^\s*Cursor\s*:", line):
+            match = CURSOR_RE.match(line)
+            if not match:
+                refs.append(None)
+            else:
+                refs.append((normalize_path(match.group(1)), int(match.group(2))))
+    return refs
+
+
+def validate_cursors(project_root: Path, section_start: int, lines: list[str]) -> list[str]:
+    errors: list[str] = []
+    cursors = collect_cursor_refs(lines)
+    if len(cursors) > 1:
+        errors.append(f"section starting at line {section_start} has multiple Cursor directives")
+        return errors
+    if not cursors:
+        return errors
+    cursor = cursors[0]
+    if cursor is None:
+        errors.append(f"section starting at line {section_start} has an invalid Cursor directive")
+        return errors
+
+    source_refs = collect_source_refs(lines)
+    if not source_refs:
+        errors.append(f"section starting at line {section_start} has a Cursor directive but no source reference")
+        return errors
+
+    source_match = SOURCE_RE.search(source_refs[0])
+    if not source_match:
+        return errors
+    source_path = normalize_path(source_match.group(1))
+    start_line = int(source_match.group(2))
+    end_line = int(source_match.group(3) or source_match.group(2))
+    cursor_path, cursor_line = cursor
+    if cursor_path != source_path:
+        errors.append(f"section starting at line {section_start}: Cursor path must match the first Source reference")
+    elif cursor_line < start_line or cursor_line > end_line:
+        errors.append(f"section starting at line {section_start}: Cursor line must be inside the first Source range")
+    return errors
 
 
 def normalize_diff_side(value: str | None) -> str | None:
@@ -308,6 +358,7 @@ def validate_doc(project_root: Path, markdown_path: Path, allow_partial_diff: bo
             if not collect_source_refs(section_lines):
                 errors.append(f"section starting at line {section_start} has no source reference")
             errors.extend(validate_source_refs(project_root, section_start, section_lines))
+            errors.extend(validate_cursors(project_root, section_start, section_lines))
 
     if doc_type == "code-reader-diff":
         diff_value = frontmatter.get("diff")
@@ -327,6 +378,8 @@ def validate_doc(project_root: Path, markdown_path: Path, allow_partial_diff: bo
 
         explained: set[tuple[str, str]] = set()
         for section_start, section_lines in non_front_sections:
+            if collect_cursor_refs(section_lines):
+                errors.append(f"section starting at line {section_start}: Cursor is only valid for code-reader documents")
             refs = collect_diff_refs(section_lines)
             if not refs:
                 errors.append(f"section starting at line {section_start} has no diff reference")

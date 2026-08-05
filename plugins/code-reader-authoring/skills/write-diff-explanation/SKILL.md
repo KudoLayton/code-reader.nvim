@@ -11,12 +11,14 @@ Read `../../references/code-reader-markdown-format.md` before writing.
 
 1. Inspect the unified diff before writing prose.
 2. If the user provides references copied with `:CodeReaderCopyRef`, use those `path#Hn` or `path#Hn@old/new:Lx-Ly` ranges as direct diff targets unless the user asks for a broader review.
-3. Identify files, file-local hunk ids, changed behavior, and review order.
+3. Identify files, file-local hunk ids, changed behavior, and runtime execution order; do not use patch order as the reading order when it obscures behavior.
 4. Draft a `type: code-reader-diff` markdown file with a front page and numbered hunk explanation steps.
 5. Put `Diff: path#Hn` or a side-specific range reference on every concrete step.
-6. Split large hunks, whole-file additions, or dense rewrites into multiple focused range steps.
+6. Split large hunks, whole-file additions, dense rewrites, or subroutines into nested focused range steps. Each page's Diff scope must contain only the change its prose explains.
 7. Cover every hunk unless the user explicitly asks for a partial explanation.
-8. Run the shared validator and fix every reported issue before finishing.
+8. Run the shared validator and fix every reported issue.
+9. Ask a read-only subagent to perform the Authoring Review defined in `../../references/code-reader-markdown-format.md`, including the hunk-to-page coverage table.
+10. Fix every review issue, then rerun the validator and Authoring Review until the subagent returns `VERDICT: PASS`.
 
 ## Output Defaults
 

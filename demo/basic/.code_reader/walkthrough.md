@@ -6,11 +6,23 @@ version: 1
 <!-- code-reader: front-page -->
 # Demo Overview
 
-This demo is a small HTTP-style request handler. It shows how a raw request becomes a predictable response without adding framework details or external dependencies.
+## Problem
+
+This demo is a small HTTP-style request handler. A raw request can omit fields or contain an unsupported method, so a caller needs a predictable response without adding framework details or external dependencies.
+
+## Expected outcome
+
+After this walkthrough, the reader can trace how valid input becomes a `200` response and how invalid input becomes a `400` response with a clear reason.
+
+## Representative example
+
+`{ method = "GET", path = "/docs", user = "Ada" }` is normalized, validated, and rendered as a greeting. `{ method = "DELETE" }` follows the same setup flow but ends at the error response.
+
+## Architecture and reading flow
 
 The main flow starts in `app.handle`, which builds request context and coordinates the rest of the program. The `request` module normalizes input and rejects invalid requests, while the `response` module turns the result into either a success response or a clear error response.
 
-Read this walkthrough as a map of the program shape: first the top-level lifecycle, then the parse and validation steps, then the two response paths that finish the request.
+Read this walkthrough in execution order: first the top-level lifecycle, then parse and validation, then the success or error response path.
 
 ```mermaid
 flowchart TD
