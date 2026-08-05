@@ -27,6 +27,7 @@ This walkthrough explains the request flow.
 # 1. Request lifecycle
 
 Source: `src/server.lua#L10-L30`
+Cursor: `src/server.lua#L12`
 
 The top-level flow.
 
@@ -63,6 +64,9 @@ eq(doc.steps[2].depth, 1, "first step depth")
 eq(doc.steps[2].sources[1].path, "src/server.lua", "first source path")
 eq(doc.steps[2].sources[1].start_line, 10, "first source start")
 eq(doc.steps[2].sources[1].end_line, 30, "first source end")
+eq(doc.steps[2].sources[1].cursor_line, 12, "first source cursor")
+eq(doc.steps[2].content:find("Source:", 1, true), nil, "source directive removed from content")
+eq(doc.steps[2].content:find("Cursor:", 1, true), nil, "cursor directive removed from content")
 
 eq(doc.steps[3].id, "1.1", "nested step id")
 eq(doc.steps[3].title, "Parse request", "nested step title")

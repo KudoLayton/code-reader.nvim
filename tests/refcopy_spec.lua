@@ -126,9 +126,8 @@ local mermaid_line = line_with(explanation_buf, "rendered mermaid diagram")
 eq(code_reader.copy_ref({ bufnr = explanation_buf, line1 = mermaid_line, line2 = mermaid_line, register = "z", notify = false }), true, "mermaid copy succeeds")
 eq(vim.fn.getreg("z"), ".code_reader/flow.md#L23-L26", "mermaid ref expands to source block")
 
-eq(code_reader.copy_ref({ bufnr = explanation_buf, line1 = 1, line2 = md_line, register = "z", notify = false }), true, "generated mixed copy succeeds")
-contains(vim.fn.getreg("z"), "Step: 2 / 2", "generated mixed selection copies text")
-contains(vim.fn.getreg("z"), "The flag starts disabled.", "generated mixed selection includes markdown text")
+eq(code_reader.copy_ref({ bufnr = explanation_buf, line1 = 1, line2 = md_line, register = "z", notify = false }), true, "body-first markdown copy succeeds")
+eq(vim.fn.getreg("z"), ".code_reader/flow.md#L17-L21", "body-first selection preserves markdown reference")
 
 local front_buf = state.buffers.front_page
 code_reader.goto_step(1)

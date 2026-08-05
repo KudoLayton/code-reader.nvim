@@ -505,6 +505,21 @@ local function source_ref_label(source_ref)
   return source_ref.path .. suffix
 end
 
+local function source_cursor_line(source_ref)
+  if not source_ref then
+    return nil
+  end
+  return source_ref.cursor_line or source_ref.start_line
+end
+
+local function cursor_ref_label(source_ref)
+  local cursor_line = source_cursor_line(source_ref)
+  if not cursor_line then
+    return "none"
+  end
+  return source_ref.path .. "#L" .. tostring(cursor_line)
+end
+
 local function step_link(step)
   return "[[" .. step.id .. "|" .. step.title .. "]]"
 end
@@ -754,8 +769,6 @@ local function child_steps(state, step)
 end
 
 local function append_navigation(lines, state, step, source_ref)
-  table.insert(lines, "")
-  table.insert(lines, "---")
   table.insert(lines, "## Navigation")
   table.insert(lines, "")
 
@@ -980,7 +993,7 @@ function M.open_layout(state)
   state.buffers.explanation = create_scratch("code-reader://explanation", "markdown")
   state.buffers.toc = create_scratch("code-reader://toc", "code_reader_toc")
 
-  vim.cmd("vsplit")
+  vim.cmd("leftabove vsplit")
   state.windows.explanation = vim.api.nvim_get_current_win()
   vim.api.nvim_win_set_buf(state.windows.explanation, state.buffers.explanation)
   vim.api.nvim_win_set_width(state.windows.explanation, math.max(46, math.floor(vim.o.columns * 0.38)))
@@ -1015,9 +1028,15 @@ function M.render_explanation(state)
       end_line = step.heading_line,
     } or nil)
     append_mapped_line(lines, map, "")
+    append_mapped_line(lines, map, "---")
+    append_mapped_line(lines, map, "")
+    append_mapped_line(lines, map, "## Page Metadata")
+    append_mapped_line(lines, map, "")
     append_mapped_line(lines, map, "Step: " .. tostring(state.current) .. " / " .. tostring(#state.doc.steps))
     append_mapped_line(lines, map, "Source: none")
     append_mapped_line(lines, map, "Status: overview")
+    append_mapped_line(lines, map, "")
+    append_mapped_line(lines, map, "---")
     append_mapped_line(lines, map, "")
 
     append_navigation(lines, state, step, nil)
@@ -1042,6 +1061,15 @@ function M.render_explanation(state)
       end_line = step.heading_line,
     } or nil)
     append_mapped_line(lines, map, "")
+
+    local markdown_lines, markdown_map = render_markdown_lines_with_map(step.content, step.content_line_map, state)
+    append_mapped_lines(lines, map, markdown_lines, markdown_map)
+
+    append_mapped_line(lines, map, "")
+    append_mapped_line(lines, map, "---")
+    append_mapped_line(lines, map, "")
+    append_mapped_line(lines, map, "## Page Metadata")
+    append_mapped_line(lines, map, "")
     append_mapped_line(lines, map, "Step: " .. tostring(state.current) .. " / " .. tostring(#state.doc.steps))
     append_mapped_line(lines, map, "Diff: " .. diff_ref_label(diff_ref))
     append_mapped_line(lines, map, "View: " .. diff_view_label(analysis))
@@ -1052,9 +1080,8 @@ function M.render_explanation(state)
       append_mapped_line(lines, map, "Rendering: " .. diff_render.summary_label(diff_render.render_hunk(hunk, diff_ref).summary))
     end
     append_mapped_line(lines, map, "")
-
-    local markdown_lines, markdown_map = render_markdown_lines_with_map(step.content, step.content_line_map, state)
-    append_mapped_lines(lines, map, markdown_lines, markdown_map)
+    append_mapped_line(lines, map, "---")
+    append_mapped_line(lines, map, "")
 
     append_navigation(lines, state, step, nil)
     for index = #map + 1, #lines do
@@ -1080,13 +1107,24 @@ function M.render_explanation(state)
     end_line = step.heading_line,
   } or nil)
   append_mapped_line(lines, map, "")
-  append_mapped_line(lines, map, "Step: " .. tostring(state.current) .. " / " .. tostring(#state.doc.steps))
-  append_mapped_line(lines, map, "Source: " .. source_ref_label(source_ref))
-  append_mapped_line(lines, map, "Status: " .. source.status_label(status))
-  append_mapped_line(lines, map, "")
 
   local markdown_lines, markdown_map = render_markdown_lines_with_map(step.content, step.content_line_map, state)
   append_mapped_lines(lines, map, markdown_lines, markdown_map)
+
+  append_mapped_line(lines, map, "")
+  append_mapped_line(lines, map, "---")
+  append_mapped_line(lines, map, "")
+  append_mapped_line(lines, map, "## Page Metadata")
+  append_mapped_line(lines, map, "")
+  append_mapped_line(lines, map, "Step: " .. tostring(state.current) .. " / " .. tostring(#state.doc.steps))
+  append_mapped_line(lines, map, "Source: " .. source_ref_label(source_ref))
+  if source_ref and source_ref.cursor_line then
+    append_mapped_line(lines, map, "Cursor: " .. cursor_ref_label(source_ref))
+  end
+  append_mapped_line(lines, map, "Status: " .. source.status_label(status))
+  append_mapped_line(lines, map, "")
+  append_mapped_line(lines, map, "---")
+  append_mapped_line(lines, map, "")
 
   append_navigation(lines, state, step, source_ref)
   for index = #map + 1, #lines do
@@ -1325,7 +1363,9 @@ function M.render_source(state)
   local start_line = math.max(1, math.min(source_ref.start_line, line_count))
   local end_line = math.max(start_line, math.min(source_ref.end_line or source_ref.start_line, line_count))
 
-  vim.api.nvim_win_set_cursor(state.windows.code, { start_line, 0 })
+  local cursor_line = source_cursor_line(source_ref)
+  cursor_line = math.max(1, math.min(cursor_line, line_count))
+  vim.api.nvim_win_set_cursor(state.windows.code, { cursor_line, 0 })
   reveal_window_top(state, state.windows.code, smooth)
 
   vim.api.nvim_buf_clear_namespace(buf, namespace, 0, -1)

@@ -152,39 +152,55 @@ local function parse_sources(lines)
   local seen = {}
 
   for _, line in ipairs(lines) do
-    local masked = line
+    if not trim(line):match("^Cursor:%s*") then
+      local masked = line
 
-    for path, start_line, end_line, expected_hash in line:gmatch("([%w%._%-/%\\]+)#L(%d+)%-L(%d+)@sha256:([a-fA-F0-9]+)") do
-      add_source(sources, seen, path, start_line, end_line, expected_hash:lower())
-    end
-    masked = masked:gsub("[%w%._%-/%\\]+#L%d+%-L%d+@sha256:[a-fA-F0-9]+", "")
+      for path, start_line, end_line, expected_hash in line:gmatch("([%w%._%-/%\\]+)#L(%d+)%-L(%d+)@sha256:([a-fA-F0-9]+)") do
+        add_source(sources, seen, path, start_line, end_line, expected_hash:lower())
+      end
+      masked = masked:gsub("[%w%._%-/%\\]+#L%d+%-L%d+@sha256:[a-fA-F0-9]+", "")
 
-    for path, start_line, end_line in line:gmatch("([%w%._%-/%\\]+)#L(%d+)%-L(%d+)") do
-      add_source(sources, seen, path, start_line, end_line)
-    end
-    masked = masked:gsub("[%w%._%-/%\\]+#L%d+%-L%d+", "")
+      for path, start_line, end_line in line:gmatch("([%w%._%-/%\\]+)#L(%d+)%-L(%d+)") do
+        add_source(sources, seen, path, start_line, end_line)
+      end
+      masked = masked:gsub("[%w%._%-/%\\]+#L%d+%-L%d+", "")
 
-    for path, start_line, end_line, expected_hash in line:gmatch("([%w%._%-/%\\]+)#L(%d+)%-(%d+)@sha256:([a-fA-F0-9]+)") do
-      add_source(sources, seen, path, start_line, end_line, expected_hash:lower())
-    end
-    masked = masked:gsub("[%w%._%-/%\\]+#L%d+%-%d+@sha256:[a-fA-F0-9]+", "")
+      for path, start_line, end_line, expected_hash in line:gmatch("([%w%._%-/%\\]+)#L(%d+)%-(%d+)@sha256:([a-fA-F0-9]+)") do
+        add_source(sources, seen, path, start_line, end_line, expected_hash:lower())
+      end
+      masked = masked:gsub("[%w%._%-/%\\]+#L%d+%-%d+@sha256:[a-fA-F0-9]+", "")
 
-    for path, start_line, end_line in line:gmatch("([%w%._%-/%\\]+)#L(%d+)%-(%d+)") do
-      add_source(sources, seen, path, start_line, end_line)
-    end
-    masked = masked:gsub("[%w%._%-/%\\]+#L%d+%-%d+", "")
+      for path, start_line, end_line in line:gmatch("([%w%._%-/%\\]+)#L(%d+)%-(%d+)") do
+        add_source(sources, seen, path, start_line, end_line)
+      end
+      masked = masked:gsub("[%w%._%-/%\\]+#L%d+%-%d+", "")
 
-    for path, start_line, expected_hash in masked:gmatch("([%w%._%-/%\\]+)#L(%d+)@sha256:([a-fA-F0-9]+)") do
-      add_source(sources, seen, path, start_line, start_line, expected_hash:lower())
-    end
-    masked = masked:gsub("[%w%._%-/%\\]+#L%d+@sha256:[a-fA-F0-9]+", "")
+      for path, start_line, expected_hash in masked:gmatch("([%w%._%-/%\\]+)#L(%d+)@sha256:([a-fA-F0-9]+)") do
+        add_source(sources, seen, path, start_line, start_line, expected_hash:lower())
+      end
+      masked = masked:gsub("[%w%._%-/%\\]+#L%d+@sha256:[a-fA-F0-9]+", "")
 
-    for path, start_line in masked:gmatch("([%w%._%-/%\\]+)#L(%d+)") do
-      add_source(sources, seen, path, start_line, start_line)
+      for path, start_line in masked:gmatch("([%w%._%-/%\\]+)#L(%d+)") do
+        add_source(sources, seen, path, start_line, start_line)
+      end
     end
   end
 
   return sources
+end
+
+local function parse_cursor(lines)
+  for _, line in ipairs(lines) do
+    if trim(line):match("^Cursor:%s*") then
+      local path, line_number = line:match("([%w%._%-/%\\]+)#L(%d+)")
+      if path and line_number then
+        return {
+          path = path:gsub("\\", "/"),
+          line = tonumber(line_number),
+        }
+      end
+    end
+  end
 end
 
 local function normalize_diff_side(side)
@@ -330,11 +346,16 @@ local function count_numeric_depth(id)
   return depth
 end
 
+local function is_metadata_directive(text)
+  local value = trim(text)
+  return value:match("^Source:%s*") or value:match("^Diff:%s*") or value:match("^Cursor:%s*")
+end
+
 local function section_content(lines, heading_index)
   local content = {}
   local line_map = {}
   for index, item in ipairs(lines) do
-    if index ~= heading_index then
+    if index ~= heading_index and not is_metadata_directive(item.text) then
       table.insert(content, item.text)
       table.insert(line_map, item.line)
     end
@@ -398,6 +419,18 @@ local function parse_step(section, index)
   local title = heading and heading.title or ("Step " .. tostring(index))
   local depth = heading and heading.level or count_numeric_depth(id)
   local content, content_line_map = section_content(step_lines, heading and heading.index)
+  local sources = parse_sources(step_texts)
+  local cursor = parse_cursor(step_texts)
+  local primary_source = sources[1]
+  if
+    cursor
+    and primary_source
+    and cursor.path == primary_source.path
+    and cursor.line >= primary_source.start_line
+    and cursor.line <= primary_source.end_line
+  then
+    primary_source.cursor_line = cursor.line
+  end
 
   if is_front_page then
     id = "front"
@@ -421,7 +454,7 @@ local function parse_step(section, index)
     heading_line = heading and step_lines[heading.index] and step_lines[heading.index].line or nil,
     start_line = section.start_line,
     end_line = step_lines[#step_lines] and step_lines[#step_lines].line or section.start_line,
-    sources = parse_sources(step_texts),
+    sources = sources,
     diff_refs = parse_diff_refs(step_texts),
   }
 end

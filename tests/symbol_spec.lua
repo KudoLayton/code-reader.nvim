@@ -7,6 +7,15 @@ local function eq(actual, expected, label)
   end
 end
 
+local function line_with(buf, text)
+  for index, line in ipairs(vim.api.nvim_buf_get_lines(buf, 0, -1, false)) do
+    if line:find(text, 1, true) then
+      return index
+    end
+  end
+  error("line not found: " .. text, 2)
+end
+
 local tmp = vim.fn.tempname()
 vim.fn.mkdir(tmp .. "/.code_reader", "p")
 vim.fn.mkdir(tmp .. "/src", "p")
@@ -53,23 +62,26 @@ local state = code_reader.state()
 
 local explanation = state.buffers.explanation
 vim.api.nvim_set_current_win(state.windows.explanation)
-vim.api.nvim_win_set_cursor(state.windows.explanation, { 9, 10 })
+local internal_link_line = line_with(explanation, "Jump to [[1.1|run detail]].")
+vim.api.nvim_win_set_cursor(state.windows.explanation, { internal_link_line, 10 })
 code_reader.activate()
 eq(state.current, 2, "internal link moves to target step")
 
 code_reader.goto_step(1)
 vim.api.nvim_set_current_win(state.windows.explanation)
 vim.api.nvim_set_option_value("modifiable", true, { buf = explanation })
-vim.api.nvim_buf_set_lines(explanation, 8, 9, false, {
+local missing_link_line = line_with(explanation, "Jump to [[1.1|run detail]].")
+vim.api.nvim_buf_set_lines(explanation, missing_link_line - 1, missing_link_line, false, {
   "Jump to [[9.9|missing detail]].",
 })
 vim.api.nvim_set_option_value("modifiable", false, { buf = explanation })
-vim.api.nvim_win_set_cursor(state.windows.explanation, { 9, 10 })
+vim.api.nvim_win_set_cursor(state.windows.explanation, { missing_link_line, 10 })
 code_reader.activate()
 eq(state.current, 1, "missing internal link keeps current step")
 
 vim.api.nvim_set_current_win(state.windows.explanation)
-vim.api.nvim_win_set_cursor(state.windows.explanation, { 11, 2 })
+local symbol_link_line = line_with(explanation, "treesitter://src/app.lua")
+vim.api.nvim_win_set_cursor(state.windows.explanation, { symbol_link_line, 2 })
 code_reader.activate()
 
 local source_buf = vim.api.nvim_win_get_buf(state.windows.code)
@@ -104,11 +116,11 @@ eq(#vim.api.nvim_buf_get_extmarks(source_buf, symbols.namespace, 0, -1, {}), 2, 
 symbols.clear(source_buf)
 
 vim.api.nvim_set_option_value("modifiable", true, { buf = explanation })
-vim.api.nvim_buf_set_lines(explanation, 10, 11, false, {
+vim.api.nvim_buf_set_lines(explanation, symbol_link_line - 1, symbol_link_line, false, {
   "[bad](<treesitter://src/app.lua?query=((invalid>)",
 })
 vim.api.nvim_set_option_value("modifiable", false, { buf = explanation })
-vim.api.nvim_win_set_cursor(state.windows.explanation, { 11, 2 })
+vim.api.nvim_win_set_cursor(state.windows.explanation, { symbol_link_line, 2 })
 code_reader.activate()
 
 print("symbol_spec: ok")

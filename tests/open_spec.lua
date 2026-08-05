@@ -192,6 +192,7 @@ vim.fn.writefile({
   "# 1. Module setup",
   "",
   "Source: `src/app.lua#L1-L2`",
+  "Cursor: `src/app.lua#L2`",
   "",
   "The module table is prepared.",
   "",
@@ -224,6 +225,8 @@ vim.fn.writefile({
 
 vim.cmd("edit " .. vim.fn.fnameescape(source_file))
 local initial_code_buf = vim.api.nvim_get_current_buf()
+local original_splitright = vim.o.splitright
+vim.o.splitright = true
 local code_reader = require("code_reader")
 code_reader.setup({
   mermaid = {
@@ -243,6 +246,11 @@ eq(state.current, 1, "initial step")
 eq(vim.api.nvim_win_is_valid(state.windows.code), true, "code window valid")
 eq(vim.api.nvim_win_is_valid(state.windows.explanation), true, "explanation window valid")
 eq(vim.api.nvim_win_is_valid(state.windows.toc), true, "toc window valid")
+eq(
+  vim.api.nvim_win_get_position(state.windows.explanation)[2] < vim.api.nvim_win_get_position(state.windows.code)[2],
+  true,
+  "explanation window opens left of code window"
+)
 eq(vim.api.nvim_buf_get_lines(state.buffers.explanation, 0, 1, false)[1], "# front Code Reader Overview", "initial explanation title")
 eq(vim.api.nvim_buf_get_name(vim.api.nvim_win_get_buf(state.windows.code)):match("code%-reader://front%-page$") ~= nil, true, "front page code buffer")
 
@@ -272,6 +280,23 @@ eq(vim.api.nvim_buf_get_name(vim.api.nvim_win_get_buf(state.windows.code)), sour
 eq(has_line_background(vim.api.nvim_win_get_buf(state.windows.code), "local M = {}", "CodeReaderActiveLine"), true, "source active range uses line background")
 eq(has_line_hl_group(vim.api.nvim_win_get_buf(state.windows.code), "local M = {}", "CodeReaderActiveLine"), false, "source active range avoids line_hl_group")
 eq(has_highlight(vim.api.nvim_win_get_buf(state.windows.code), "return M", "CodeReaderDimLine"), true, "source outside focus dimmed by default")
+eq(vim.api.nvim_win_get_cursor(state.windows.code)[1], 2, "source cursor uses Cursor directive")
+local initial_step_lines = vim.api.nvim_buf_get_lines(state.buffers.explanation, 0, -1, false)
+local body_line = nil
+local metadata_line = nil
+local navigation_line = nil
+for index, line in ipairs(initial_step_lines) do
+  if line == "The module table is prepared." then
+    body_line = index
+  elseif line == "## Page Metadata" then
+    metadata_line = index
+  elseif line == "## Navigation" then
+    navigation_line = index
+  end
+end
+eq(body_line < metadata_line, true, "explanation body appears before metadata")
+eq(metadata_line < navigation_line, true, "metadata appears before navigation")
+eq(table.concat(initial_step_lines, "\n"):find("Cursor: `src/app.lua#L2`", 1, true), nil, "cursor directive is hidden from body")
 vim.cmd("CodeReaderToggleDimming")
 eq(state.dimming, false, "dimming command disables dimming")
 eq(has_highlight(vim.api.nvim_win_get_buf(state.windows.code), "return M", "CodeReaderDimLine"), false, "source dimming command clears dimming")
@@ -344,6 +369,7 @@ eq(vim.api.nvim_win_get_buf(code_win), initial_code_buf, "initial code buffer re
 eq(vim.api.nvim_win_is_valid(explanation_win), false, "explanation window closes")
 eq(vim.api.nvim_win_is_valid(toc_win), false, "toc window closes")
 eq(code_reader.state().doc, nil, "state clears doc")
+vim.o.splitright = original_splitright
 
 vim.cmd("CodeReaderClose")
 
