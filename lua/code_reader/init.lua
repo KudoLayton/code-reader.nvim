@@ -56,6 +56,27 @@ local function resolve_relative(base_path, target_path)
   return vim.fn.fnamemodify(vim.fn.fnamemodify(base_path, ":h") .. "/" .. target_path, ":p")
 end
 
+local function load_document(path)
+  local text, err = read_file(path)
+  if not text then
+    return nil, nil, "cannot read " .. path .. ": " .. tostring(err)
+  end
+
+  local doc = parser.parse(text, { path = path })
+  local diff_doc = nil
+  if doc.frontmatter.type == "code-reader-diff" then
+    local diff_path = resolve_relative(path, doc.frontmatter.diff)
+    local diff_text, diff_err = diff_path and read_file(diff_path) or nil, "missing diff frontmatter"
+    if not diff_text then
+      return nil, nil, "cannot read diff: " .. tostring(diff_err)
+    end
+    diff_doc = diff.parse(diff_text)
+    diff_doc.path = diff_path
+  end
+
+  return doc, diff_doc
+end
+
 local function current_file()
   local name = vim.api.nvim_buf_get_name(0)
   if name == "" then
@@ -140,24 +161,13 @@ function M.open(path)
   end
 
   path = vim.fn.fnamemodify(path, ":p")
-  local text, err = read_file(path)
-  if not text then
-    vim.notify("Code Reader: cannot read " .. path .. ": " .. tostring(err), vim.log.levels.ERROR)
+  local doc, diff_doc, err = load_document(path)
+  if not doc then
+    vim.notify("Code Reader: " .. tostring(err), vim.log.levels.ERROR)
     return
   end
 
-  local doc = parser.parse(text, { path = path })
-  local diff_doc = nil
-  if doc.frontmatter.type == "code-reader-diff" then
-    local diff_path = resolve_relative(path, doc.frontmatter.diff)
-    local diff_text, diff_err = diff_path and read_file(diff_path) or nil, "missing diff frontmatter"
-    if not diff_text then
-      vim.notify("Code Reader: cannot read diff: " .. tostring(diff_err), vim.log.levels.ERROR)
-      return
-    end
-    diff_doc = diff.parse(diff_text)
-    diff_doc.path = diff_path
-  elseif doc.frontmatter.type ~= "code-reader" then
+  if doc.frontmatter.type ~= "code-reader" and doc.frontmatter.type ~= "code-reader-diff" then
     vim.notify("Code Reader: frontmatter type is not code-reader", vim.log.levels.WARN)
   end
 
@@ -176,6 +186,42 @@ function M.open(path)
   ui.open_layout(state)
   set_buffer_keymaps()
   ui.render(state)
+end
+
+function M.refresh()
+  if not state.path or not state.doc then
+    vim.notify("Code Reader: no explanation is open", vim.log.levels.WARN)
+    return
+  end
+
+  local doc, diff_doc, err = load_document(state.path)
+  if not doc then
+    vim.notify("Code Reader: " .. tostring(err), vim.log.levels.ERROR)
+    return
+  end
+  if doc.frontmatter.type ~= "code-reader" and doc.frontmatter.type ~= "code-reader-diff" then
+    vim.notify("Code Reader: frontmatter type is not code-reader", vim.log.levels.WARN)
+  end
+
+  local current_step = state.doc.steps[state.current]
+  local current_id = current_step and current_step.id or nil
+  local focus_win = vim.api.nvim_get_current_win()
+
+  state.root = infer_root(state.path)
+  state.doc = doc
+  state.diff = diff_doc
+  state.current = (current_id and doc.step_by_id[current_id]) or doc.front_page_index or 1
+  state.toc_line_to_step = {}
+  state.refcopy_maps = {}
+  state.diff_view_path = nil
+  state.diff_view_mode = nil
+
+  symbols.clear()
+  ui.render(state)
+  ui.reset_explanation_view(state)
+  if valid_win(focus_win) then
+    vim.api.nvim_set_current_win(focus_win)
+  end
 end
 
 function M.goto_step(index, opts)
@@ -231,6 +277,9 @@ function M.open_source()
 
   local path = source.resolve_path(step.sources[1], { root = state.root })
   vim.cmd("edit " .. vim.fn.fnameescape(path))
+  local cursor_line = step.sources[1].cursor_line or step.sources[1].start_line
+  local line_count = vim.api.nvim_buf_line_count(0)
+  vim.api.nvim_win_set_cursor(0, { math.max(1, math.min(cursor_line, line_count)), 0 })
 end
 
 function M.close()

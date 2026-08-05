@@ -11,6 +11,12 @@ end, {
   desc = "Open a Code Reader explanation file",
 })
 
+vim.api.nvim_create_user_command("CodeReaderRefresh", function()
+  require("code_reader").refresh()
+end, {
+  desc = "Reload the open Code Reader explanation",
+})
+
 vim.api.nvim_create_user_command("CodeReaderNext", function()
   require("code_reader").next()
 end, {
