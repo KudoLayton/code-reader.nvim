@@ -184,12 +184,47 @@ test("parses a unified diff and renders a padded side-by-side hunk", async () =>
   assert.equal(partial.rows.some((row) => row.after.number === 4), true);
   assert.equal(partial.rows.some((row) => row.after.number === 5), true);
   assert.equal(partial.rows.some((row) => row.after.number === 6), true);
-  assert.equal(partial.rows.some((row) => row.after.number === 7), true);
+  assert.equal(partial.rows.some((row) => row.after.number === 7), false);
   assert.equal(partial.rows.some((row) => row.after.number === 8), false);
   assert.deepEqual(
     partial.rows.filter((row) => row.after.focused).map((row) => row.after.number),
     [5],
   );
+});
+
+test("crops a large contiguous diff block to the selected rows", () => {
+  const hunk = {
+    oldStart: 1,
+    oldEnd: 400,
+    newStart: 1,
+    newEnd: 400,
+    lines: [
+      ...Array.from({ length: 400 }, (_, index) => ({
+        kind: "delete",
+        oldLine: index + 1,
+        text: `old-${index + 1}`,
+      })),
+      ...Array.from({ length: 400 }, (_, index) => ({
+        kind: "add",
+        newLine: index + 1,
+        text: `new-${index + 1}`,
+      })),
+    ],
+  };
+
+  const snippet = renderDiffSnippet(hunk, {
+    padding: 0,
+    reference: {
+      side: "new",
+      startBound: { mode: "absolute", value: 200 },
+      endBound: { mode: "absolute", value: 200 },
+    },
+  });
+
+  assert.equal(snippet.rows.length, 1);
+  assert.equal(snippet.rows[0].before.number, 200);
+  assert.equal(snippet.rows[0].after.number, 200);
+  assert.equal(snippet.rows[0].after.focused, true);
 });
 
 test("generates a PDF with Mermaid and separate portrait and landscape pages", async () => {

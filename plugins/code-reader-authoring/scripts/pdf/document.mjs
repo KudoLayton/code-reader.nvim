@@ -302,20 +302,19 @@ function appendContext(rows, beforeLines, afterLines, oldLine, newLine, focused 
   });
 }
 
-function appendChangeRows(rows, deletes, adds, group) {
+function appendChangeRows(rows, deletes, adds) {
   const pairs = Math.min(deletes.length, adds.length);
   for (let index = 0; index < pairs; index += 1) {
     rows.push({
-      group,
       before: codeCell(deletes[index].oldLine, deletes[index].text, "~", "modified", true),
       after: codeCell(adds[index].newLine, adds[index].text, "~", "modified", true),
     });
   }
   for (const entry of deletes.slice(pairs)) {
-    rows.push({ group, before: codeCell(entry.oldLine, entry.text, "-", "deleted", true), after: blankCell() });
+    rows.push({ before: codeCell(entry.oldLine, entry.text, "-", "deleted", true), after: blankCell() });
   }
   for (const entry of adds.slice(pairs)) {
-    rows.push({ group, before: blankCell(), after: codeCell(entry.newLine, entry.text, "+", "added", true) });
+    rows.push({ before: blankCell(), after: codeCell(entry.newLine, entry.text, "+", "added", true) });
   }
 }
 
@@ -366,20 +365,7 @@ function cropDiffRows(rows, range) {
   if (!range.partial) {
     return rows;
   }
-  const includedGroups = new Set();
-  for (const row of rows) {
-    if (row.group === undefined) {
-      continue;
-    }
-    if ([row.before, row.after].some((cell) => isWithinRange(cell, range.outputStart, range.outputEnd))) {
-      includedGroups.add(row.group);
-    }
-  }
-  return rows.filter(
-    (row) =>
-      isWithinRange(row[range.side], range.outputStart, range.outputEnd) ||
-      (row.group !== undefined && includedGroups.has(row.group)),
-  );
+  return rows.filter((row) => isWithinRange(row[range.side], range.outputStart, range.outputEnd));
 }
 
 export function renderDiffSnippet(hunk, options = {}) {
@@ -396,7 +382,6 @@ export function renderDiffSnippet(hunk, options = {}) {
     }
   }
 
-  let changeGroup = 0;
   for (let index = 0; index < hunk.lines.length; ) {
     const entry = hunk.lines[index];
     if (entry.kind === "context") {
@@ -419,8 +404,7 @@ export function renderDiffSnippet(hunk, options = {}) {
       }
       index += 1;
     }
-    appendChangeRows(rows, deletes, adds, changeGroup);
-    changeGroup += 1;
+    appendChangeRows(rows, deletes, adds);
   }
 
   for (let offset = 1; offset <= padding; offset += 1) {
