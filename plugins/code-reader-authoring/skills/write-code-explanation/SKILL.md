@@ -14,13 +14,14 @@ Read `../../references/code-reader-markdown-format.md` before writing.
 3. Draft a `type: code-reader` markdown file with a front page and numbered steps.
 4. Use heading depth for nested reading flow when helpful: `# 1`, `## 1.1`, and `### 1.1.1` create parent/child navigation and TOC nesting.
 5. Keep each top-level or nested step as its own `---`-separated section. Do not make a nested step only as a secondary heading inside another step.
-6. Put `Source: path#Lx-Ly` on every concrete step, including nested steps. Use `Cursor: path#Lx` only when the explanation begins inside a broader first source range.
+6. Put exactly one continuous `Source: path#Lx-Ly` reference in each concrete page's metadata preamble, immediately after its opening heading. Use `Cursor: path#Lx` only when the explanation begins inside that Source range.
 7. Add internal links only when they help the reader move through the flow.
 8. Add `treesitter://` symbol links only when a stable symbol highlight is useful.
-9. Order steps by runtime execution flow, keep each page scope limited to what its prose explains, and split long routines or subroutines into nested steps.
-10. Run the shared validator and fix every reported issue.
-11. Ask a read-only subagent to perform the Authoring Review defined in `../../references/code-reader-markdown-format.md`.
-12. Fix every review issue, then rerun the validator and Authoring Review until the subagent returns `VERDICT: PASS`.
+9. Order steps by runtime execution flow, keep each page inside one definition, and split long routines or subroutines into nested `---` pages. A non-numeric child heading may organize the same scope, but it must not require a broader Source range.
+10. Run the shared validator with `--emit-page-inventory`. This bootstraps only registered, lock-pinned static-analysis dependencies and collects deterministic `V(G)` and `peak_live_bindings` metrics.
+11. When the inventory reports an immediate split, narrow the source range and split the page before requesting any reviewer. Do not treat unavailable static analysis as a pass.
+12. Ask one read-only subagent to perform the `Page Scope Review v1` defined in `../../references/code-reader-markdown-format.md` for the remaining pages.
+13. Fix every `SPLIT_REQUIRED` or `CHANGES_REQUIRED` result, then rerun static validation and a fresh Page Scope Review until the report has `overall_verdict: PASS`.
 
 ## Output Defaults
 

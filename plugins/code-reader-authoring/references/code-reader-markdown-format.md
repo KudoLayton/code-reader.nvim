@@ -21,19 +21,27 @@ version: 1
 - The front page must explain the problem, expected reader outcome, a concrete representative example, high-level structure, main module roles, and the reading flow before the detailed steps.
 - Use Mermaid diagrams on the front page or individual steps when they clarify structure, control flow, data flow, or hunk impact.
 - Prefer plain prose or lists instead of Mermaid when the user disabled Mermaid rendering or `:checkhealth code_reader` reports that Node, npm, or `beautiful-mermaid` is unavailable.
-- Do not put `Source:` or `Diff:` references on the front page. Put references on concrete explanation steps.
+- Do not put `Source:` or `Diff:` references on the front page. Put references on concrete explanation pages.
 - Use numeric heading ids for top-level and nested steps, such as `# 1. Request lifecycle`, `## 1.1. Parse request`, and `### 1.1.1. Validate method`.
-- Heading depth on the first heading of each `---`-separated step drives TOC nesting. A nested step must still be its own section, not only a secondary heading inside another step.
+- Heading depth on the first heading of each `---`-separated page drives TOC nesting. A numeric heading that follows the opening heading in the same page is invalid: give it its own `---` page. A non-numeric child heading is allowed only as conceptual organization for the same target code.
 - Use `[[step-id]]` or `[[step-id|label]]` only for links to existing steps in the same explanation.
-- Order steps by runtime execution flow, not source-file or diff order. When a scope contains a long routine or subroutine, use nested steps instead of making one broad page.
-- A page's `Source` or `Diff` scope must contain only the code or change needed by that page's explanation. Do not broaden a page scope merely to make coverage look higher.
+- Order pages by runtime execution flow, not source-file or diff order. When a scope contains a long routine or subroutine, use nested pages instead of making one broad page.
+- A page's scope must contain only the code or change needed by that page's prose, diagrams, and links. Do not broaden a scope merely to make coverage look higher.
+
+## Page Reference Preamble
+
+Every concrete page has a metadata preamble immediately after its opening heading and before prose, diagrams, or child headings.
+
+- A `type: code-reader` page has exactly one continuous `Source:` reference in that preamble. Its optional `Cursor:` reference must name the same path and stay inside that Source range.
+- A `type: code-reader-diff` page has one or more `Diff:` references in that preamble. Multiple hunks are allowed only when every resolved range belongs to one logical definition. A rename is allowed only when the old and new ranges identify that same definition.
+- A page must not contain an additional `Source:` or `Diff:` reference after the preamble, and a document type must not use the other reference kind.
+- A page may explain a function, method, type, class, named declaration, or one top-level declaration or statement. It must not combine sibling definitions, multiple class members, or multiple top-level statements. A class container page is allowed only for its declaration or contract, not to explain several members.
 
 ## Code Explanation
 
 - Use `type: code-reader`.
-- Each non-front-page step should include at least one source reference.
-- Write source references as `Source: path#Lx` or `Source: path#Lx-Ly`.
-- Use optional `Cursor: path#Lx` when the explanation starts inside a broader first source range. The Cursor path must match that first Source path and its line must be within that Source range.
+- Write the one source reference as `Source: path#Lx` or `Source: path#Lx-Ly`.
+- Use optional `Cursor: path#Lx` when the explanation starts inside the Source range.
 - Keep paths project-root relative and use `/` separators.
 - Optional symbol links must include the source path:
 
@@ -46,10 +54,9 @@ version: 1
 - Use `type: code-reader-diff`.
 - Add `diff: ./change.diff` in frontmatter. Resolve it relative to the markdown file.
 - The front page should summarize the change set: purpose, behavioral impact, affected files or modules, and suggested review flow.
-- Explain individual hunks in step sections, not on the front page.
+- Explain individual hunks in step pages, not on the front page.
 - Use step-level Mermaid diagrams only when they make a specific hunk or cross-file relationship easier to review.
-- Each non-front-page step should include at least one diff reference.
-- Write diff references as `Diff: path#Hn`, where `Hn` is the file-local hunk number from the unified diff.
+- Write references as `Diff: path#Hn`, where `Hn` is the file-local hunk number from the unified diff. A page may have more than one such reference only under the single-definition rule above.
 - For large hunks or whole-file additions, split the explanation with side-specific focus ranges:
   - `Diff: path#Hn@old:L10-L18`
   - `Diff: path#Hn@new:L20-L40`
@@ -61,20 +68,111 @@ version: 1
 - Use `padding=N` or `pad=N` when the same number of lines should be focused before and after the hunk: `Diff: path#Hn@new:padding=2`.
 - Prefer covering every hunk in the diff unless the user asks for a partial explanation. When only part of a hunk belongs on a page, use a side-specific range and cover the remaining meaningful change in another page; do not claim whole-hunk coverage with an unnecessarily broad page.
 
-## Authoring Review
+## Static Page Metrics
 
-After the static validator passes, ask a read-only subagent to review the completed document before finishing. Give it the project root, Markdown path, document type, every page's references, and—when the document is a diff—the diff path and complete `path#Hn` list.
+Run the registered static-analysis bootstrap before asking a reviewer. It may install only dependencies named in the repository's language profile and lock; it must reject an unregistered dependency or a version that does not match the lock. Do not select, install, or upgrade a parser or analyzer ad hoc.
 
-The subagent must inspect pages in document order and return `VERDICT: PASS` or `VERDICT: CHANGES_REQUIRED`. For every page, report its step id, Source or Diff refs, verdict, any unsupported or omitted explanation, and the required author action. It must verify that each page's own prose, diagrams, and links are supported by that page's scope; another page cannot justify an over-broad scope.
+The page inventory records the analysis result for each resolved Source range and for both resolvable old/new Diff sides:
 
-For diff documents, the report must also include a `hunk -> page` coverage table and list uncovered hunks. All hunks remain required unless the user explicitly requested a partial explanation. The subagent must not edit the document; the writing agent fixes every reported issue, reruns the static validator, and requests review again until it passes.
+- `V(G)` is the deterministic cyclomatic complexity of the selected definition or structurally complete SESE subregion. The inventory includes its decision nodes and locations.
+- `peak_live_bindings` is a deterministic local-binding proxy. Python and Lua profiles use backward lexical liveness; Tree-sitter profiles use profile-bound backward token liveness. It includes its peak location and binding names, but excludes heap/object fields, globals, aliases, and dynamic calls and may over- or under-count the reader's actual working-memory load. The static threshold is therefore a conservative split gate, not evidence that a lower value is safe.
+- A Diff resolver first uses the old/new blob revision and path, then verifies hunk lines and context. For an unresolved side, the inventory records `hunk_fallback`, the attempted revision, and the reason instead of inventing a source range.
+
+The writing agent must split and re-run static validation without requesting a reviewer when either of these conditions is true:
+
+- `V(G) >= 12` or `peak_live_bindings >= 9`.
+- Both `V(G) >= 11` and `peak_live_bindings >= 8`.
+
+An unavailable profile, parser failure, unresolved Diff source, or a lone non-extreme static warning is not a pass. It is input to Page Scope Review.
+
+## Page Scope Review v1
+
+After static validation passes without an immediate split, ask one read-only subagent to perform Page Scope Review. Give it the project root, Markdown path, document type, page inventory, related source files or revisions, and the diff path with its complete `path#Hn` list when applicable. The subagent must not edit files.
+
+The reviewer must inspect pages in document order and return exactly one YAML report in a fenced `yaml` block with this shape:
+
+```yaml
+schema: code-reader-page-scope-review/v1
+document: relative/path/to/walkthrough.md
+overall_verdict: PASS # PASS | CHANGES_REQUIRED
+pages:
+  - page_id: "1"
+    refs: ["src/example.py#L10-L34"]
+    resolution: source # source | diff_resolved | hunk_fallback
+    definition:
+      name: parse_request
+      kind: function
+      evidence: ["src/example.py#L10-L34"]
+      single_definition: true
+    headings:
+      - text: "Input normalization"
+        classification: conceptual # conceptual | scope_expanding
+        counterfactual: "Removing this section would not narrow the Source range."
+    metrics:
+      static:
+        cyclomatic_complexity: 4
+        peak_live_bindings: 3
+      semantic:
+        independent_concepts:
+          count: 2
+          items:
+            - name: normalize request fields
+              evidence: ["src/example.py#L12-L18"]
+              rationale: "Defines the input contract before parsing."
+        variable_value_pairs:
+          count: 3
+          peak_location: "src/example.py#L22"
+          bindings:
+            - name: method
+              role: normalized input
+              evidence: ["src/example.py#L12-L22"]
+    triggered_rules: []
+    verdict: PASS # PASS | SPLIT_REQUIRED | CHANGES_REQUIRED
+    required_action: null
+```
+
+For every page, apply the following measurement procedure and record evidence in the report.
+
+### Definition and child-heading scope
+
+1. Verify that all resolved references lie inside one allowed definition. A hunk that crosses definitions must use a focused old/new range or become separate pages.
+2. Evaluate every H2+ heading by removing that heading and its explanation hypothetically. If doing so allows the page's Source or resolved Diff scope to become smaller, classify it as `scope_expanding` and require a new `---` page. Headings that explain the same range's input, output, invariant, or control order are `conceptual`.
+3. An unresolved Diff uses `hunk_fallback`: inspect the hunk body, context, and header only. If these do not establish one definition with sufficient confidence, return `CHANGES_REQUIRED`, never PASS.
+
+### Independent concepts
+
+Count one concept for each separate responsibility with its own answer to “what or why must the reader understand?” Record its name, code evidence, and why it is separate. Typical concepts include validation, state creation or mutation, transformation algorithm, branch policy, error/retry policy, I/O or persistence, protocol/integration, and concurrency/lifecycle.
+
+- Do not count syntax, a helper calculation serving the same responsibility, or a sequence of calls that implements one state transition separately.
+- Count `independent_concepts >= 5` as a normal violation and `>= 6` as an extreme violation.
+
+### Variable--value pairs
+
+At each cognitively demanding execution point--immediately before a branch, output, or side effect--list the bindings a reader must retain to predict what happens next. Use the highest count.
+
+- Include parameters, locals, independently compared fields or keys, loop accumulators, and branch conditions.
+- Count a plainly forwarded object once; count aliases separately when their distinct names must be tracked. Exclude clear constants, values irrelevant to the current result, and values fully externalized in a state table or diagram on the page.
+- Record the peak location and, for every counted binding, its name, role, and source evidence. Report both the static proxy and semantic count; apply the larger value for the split policy so a static warning cannot be rationalized away.
+- Count `variable_value_pairs >= 8` as a normal violation and `>= 9` as an extreme violation.
+
+### Verdict rules
+
+`SPLIT_REQUIRED` is mandatory when any one of the following applies:
+
+- The page crosses a definition boundary or has a `scope_expanding` child heading.
+- `V(G) >= 12`, independent concepts `>= 6`, or variable--value pairs `>= 9`.
+- At least two normal violations: `V(G) >= 11`, independent concepts `>= 5`, and variable--value pairs `>= 8`.
+
+For a resolved Diff, use the more demanding old/new measurement. For `hunk_fallback`, count only supported lower bounds; if a lower bound triggers a rule, require a split. If the reviewer cannot determine a safe definition boundary or cognitive load, return `CHANGES_REQUIRED`. The writing agent fixes every non-PASS page, then re-runs the static validator and a fresh Page Scope Review until the report is `overall_verdict: PASS`.
+
+For diff documents, the report must also include a `hunk_coverage` table and list uncovered hunks. All hunks remain required unless the user explicitly requested a partial explanation.
 
 ## Validation
 
-Run the shared validator after writing or editing a document:
+Run the shared validator and emit an inventory after writing or editing a document. This command performs the registered, locked dependency bootstrap before collecting static metrics:
 
 ```powershell
-python plugins/code-reader-authoring/scripts/validate_code_reader_markdown.py --project-root <repo-root> <markdown-file>
+python plugins/code-reader-authoring/scripts/validate_code_reader_markdown.py --project-root <repo-root> --emit-page-inventory <inventory.json> <markdown-file>
 ```
 
 Use `--allow-partial-diff` only when the user explicitly wants a partial diff explanation.
