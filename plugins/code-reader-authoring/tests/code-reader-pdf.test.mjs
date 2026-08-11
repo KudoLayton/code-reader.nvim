@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { access, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 import { PDFDocument } from "pdf-lib";
 
 import { findBrowserExecutable, writePdfFromHtml } from "../scripts/pdf/browser.mjs";
+import { defaultOutputPath, main, parseCliArguments } from "../scripts/pdf/cli.mjs";
 import {
   buildSourceSnippet,
   parseCodeReaderDocument,
@@ -18,6 +19,34 @@ import { renderCodeReaderHtml } from "../scripts/pdf/render.mjs";
 const testDirectory = path.dirname(fileURLToPath(import.meta.url));
 const repositoryRoot = path.resolve(testDirectory, "../../..");
 const demoRoot = path.join(repositoryRoot, "demo", "basic");
+
+test("defaults PDF output beside its Markdown input and validates layout", () => {
+  const input = path.join("docs", ".code_reader", "walkthrough.md");
+
+  assert.equal(defaultOutputPath(input), path.join("docs", ".code_reader", "walkthrough.pdf"));
+  assert.deepEqual(parseCliArguments([input]), {
+    root: process.cwd(),
+    padding: 5,
+    layout: "print",
+    input,
+  });
+  assert.equal(parseCliArguments([input, "--layout", "screen"]).layout, "screen");
+  assert.throws(() => parseCliArguments([input, "--layout", "wide"]), /--layout must be either print or screen/);
+});
+
+test("writes the default PDF output beside its Markdown input", async () => {
+  const temporaryDirectory = await mkdtemp(path.join(os.tmpdir(), "code-reader-default-output-"));
+  const markdownPath = path.join(temporaryDirectory, "walkthrough.md");
+  const output = defaultOutputPath(markdownPath);
+
+  await writeFile(markdownPath, ["---", "type: code-reader", "version: 1", "---", "", "# Overview"].join("\n"), "utf8");
+  try {
+    await main([markdownPath, "--root", temporaryDirectory]);
+    await access(output);
+  } finally {
+    await rm(temporaryDirectory, { recursive: true, force: true });
+  }
+});
 
 test("parses source walkthrough steps and Source ranges", async () => {
   const markdown = await readFile(path.join(demoRoot, ".code_reader", "walkthrough.md"), "utf8");
