@@ -5,7 +5,8 @@
   "author": "KudoLayton <lhslhg@gmail.com>",
   "type": "module",
   "scripts": {
-    "mermaid:smoke": "node scripts/code-reader-mermaid.mjs < scripts/mermaid-smoke.mmd"
+    "mermaid:smoke": "node scripts/code-reader-mermaid.mjs < scripts/mermaid-smoke.mmd",
+    "pdf": "node scripts/code-reader-pdf.mjs"
   },
   "dependencies": {
     "beautiful-mermaid": "^1.1.3"

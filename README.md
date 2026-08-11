@@ -16,6 +16,7 @@ Use it when an AI assistant has produced a structured walkthrough and you want t
 - Side-by-side diff reading with old/new gutters, changed-line markers, moved-line detection, and inline modified-span highlights.
 - Tree-sitter symbol links, with LSP document-highlight support when available.
 - Mermaid code block rendering through an optional Node helper.
+- Standalone PDF export with Mermaid SVG, syntax highlighting, and separated explanation/code pages.
 - Optional integration with `render-markdown.nvim` for richer Markdown rendering.
 - Optional integration with `neoscroll.nvim` for same-buffer range movement.
 - Visual-range reference copying with `:CodeReaderCopyRef`, useful when asking an AI assistant to create or revise a walkthrough.
@@ -76,10 +77,11 @@ Run `:checkhealth code_reader` after installation to inspect Node, npm, the Merm
 
 ### AI Authoring Skills
 
-This repository also includes a local Codex plugin at `plugins/code-reader-authoring`. It provides two authoring skills:
+This repository also includes a local Codex plugin at `plugins/code-reader-authoring`. It provides authoring and export skills:
 
 - `write-code-explanation`: creates or revises `type: code-reader` source walkthroughs.
 - `write-diff-explanation`: creates or revises `type: code-reader-diff` patch walkthroughs.
+- `generate-code-reader-pdf`: renders a source or diff walkthrough as a formatted PDF.
 
 The local marketplace entry is stored in `.agents/plugins/marketplace.json` and points at `./plugins/code-reader-authoring`. After installing or enabling that Codex plugin, ask Codex to use Code Reader Authoring when you want a walkthrough for a feature, module, request flow, or diff.
 
@@ -90,6 +92,31 @@ python plugins/code-reader-authoring/scripts/validate_code_reader_markdown.py --
 ```
 
 Use `--allow-partial-diff` only when the diff walkthrough intentionally does not cover every hunk.
+
+### PDF Export
+
+PDF export runs independently of Neovim. It needs Node.js and either Google Chrome or Microsoft Edge; no browser download or intermediate HTML/SVG file is created.
+
+Install the self-contained export dependencies once:
+
+```powershell
+cd plugins/code-reader-authoring
+npm install
+```
+
+From the repository root, generate a source walkthrough PDF:
+
+```powershell
+npm run pdf -- -- demo/basic/.code_reader/walkthrough.md --root demo/basic --output output/pdf/walkthrough.pdf
+```
+
+Or run the same CLI from the installed Codex plugin directory:
+
+```powershell
+node scripts/code-reader-pdf.mjs <markdown-file> --root <project-root> --output <pdf-file>
+```
+
+`--padding <n>` controls the context lines around a Source or Diff range and defaults to `5`. Use `--browser <path>` when Chrome or Edge is not installed in its standard Windows location. Explanation sections use A4 portrait pages; each referenced source or side-by-side diff begins on a separate A4 landscape page.
 
 ## Demo
 
@@ -352,6 +379,12 @@ nvim --headless -u NONE -l tests/smooth_scroll_spec.lua
 nvim --headless -u NONE -l tests/symbol_spec.lua
 nvim --headless -u NONE -l tests/demo_spec.lua
 nvim --headless -u NONE -l tests/authoring_validator_spec.lua
+```
+
+Run the PDF unit and Chrome integration tests:
+
+```powershell
+npm --prefix plugins/code-reader-authoring run test:pdf
 ```
 
 Validate authored walkthrough files with:
