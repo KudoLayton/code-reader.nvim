@@ -118,7 +118,7 @@ Or run the same CLI from the installed Codex plugin directory:
 node scripts/code-reader-pdf.mjs <markdown-file> --root <project-root> [--output <pdf-file>]
 ```
 
-`--padding <n>` controls the context lines around a Source or Diff range and defaults to `5`. Use `--browser <path>` when Chrome or Edge is not installed in its standard Windows location. The default `--layout print` uses A4 portrait explanation pages and A4 landscape code pages. Use `--layout screen` for screen-only PDFs: each code or side-by-side diff page expands to its rendered width, preventing automatic code-line wrapping; short blocks stay on one code page.
+`--padding <n>` controls the context lines around a Source or Diff range and defaults to `5`. Use `--browser <path>` when Chrome or Edge is not installed in its standard Windows location. The default `--layout print` uses A4 portrait explanation pages and A4 landscape code pages. Use `--layout screen` for screen-only PDFs: each code or side-by-side diff reference uses one custom-sized page that expands to its rendered width and height, preventing automatic code-line wrapping and splitting; the following explanation always starts on a new page.
 
 ## Demo
 
