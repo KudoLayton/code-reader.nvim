@@ -101,6 +101,7 @@ export async function writePdfFromHtml(html, outputPath, browserPath) {
   try {
     const page = await browser.newPage();
     page.setDefaultTimeout(10_000);
+    await page.emulateMediaFeatures([{ name: "prefers-color-scheme", value: "light" }]);
     stage = "load rendered document";
     await page.setContent(html, { waitUntil: "load" });
     stage = "load Mermaid";

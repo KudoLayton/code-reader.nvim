@@ -258,10 +258,20 @@ test("generates a side-by-side Diff PDF", async () => {
   const output = path.join(temporaryDirectory, "request-update.pdf");
 
   try {
+    assert.match(html, /<meta name="color-scheme" content="light">/);
+    assert.match(html, /color-scheme: light/);
     assert.match(html, /<h2>Before<\/h2>/);
     assert.match(html, /<h2>After<\/h2>/);
     assert.match(html, /code-line--deleted/);
     assert.match(html, /code-line--added/);
+    assert.match(html, /code-line--focused/);
+    assert.match(html, /\.code-block \{ background: #fff;/);
+    assert.match(html, /\.code-line--focused \{ box-shadow: inset 4px 0 #2563eb, inset 0 0 0 1px #2563eb;/);
+    const fullHunkSection = html.match(
+      /<header class="code-header">\n<span>Diff H1<\/span><strong>src\/app\.lua<\/strong>[\s\S]*?<\/section>\n<section class="pdf-section/,
+    )?.[0];
+    assert.ok(fullHunkSection);
+    assert.doesNotMatch(fullHunkSection, /code-line--focused/);
     await writePdfFromHtml(html, output, await findBrowserExecutable());
     const pdf = await PDFDocument.load(await readFile(output));
 

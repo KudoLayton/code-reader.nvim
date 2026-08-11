@@ -108,7 +108,7 @@ async function highlightRows(rows, filePath) {
   }
 
   try {
-    const result = await codeToTokens(text, { lang: language, theme: "github-dark" });
+    const result = await codeToTokens(text, { lang: language, theme: "github-light" });
     return result.tokens.map((line) =>
       line
         .map((token) => {
@@ -173,8 +173,8 @@ async function renderDiffSection(reference, hunk, analysis, padding, screenPageN
   const beforeRows = snippet.rows.map((row) => row.before);
   const afterRows = snippet.rows.map((row) => row.after);
   const [before, after] = await Promise.all([
-    renderDiffRows(beforeRows, reference.path),
-    renderDiffRows(afterRows, reference.path),
+    renderDiffRows(beforeRows, reference.path, Boolean(reference.side)),
+    renderDiffRows(afterRows, reference.path, Boolean(reference.side)),
   ]);
   return [
     `<section class="pdf-section pdf-section--code"${screenPageAttributes(screenPageName)}>`,
@@ -190,12 +190,12 @@ async function renderDiffSection(reference, hunk, analysis, padding, screenPageN
   ].join("\n");
 }
 
-async function renderDiffRows(rows, filePath) {
+async function renderDiffRows(rows, filePath, showFocusedRange) {
   const highlighted = await highlightRows(rows, filePath);
   return rows
     .map((row, index) => {
       const classes = ["code-line", `code-line--${row.kind}`];
-      if (row.focused) {
+      if (showFocusedRange && row.focused) {
         classes.push("code-line--focused");
       }
       return [
@@ -305,16 +305,18 @@ export async function renderCodeReaderHtml(document, options) {
 <html lang="en">
 <head>
 <meta charset="utf-8">
+<meta name="color-scheme" content="light">
 <base href="file://${root.replaceAll("\\", "/")}/">
 <style>
 @page explanation { size: A4 portrait; margin: 16mm 18mm; }
 @page code { size: A4 landscape; margin: 12mm; }
 * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+:root { color-scheme: light; background: #fff; }
 html, body { margin: 0; color: #1f2937; background: #fff; font-family: "Malgun Gothic", "Segoe UI", sans-serif; }
-.pdf-section { break-before: page; }
+.pdf-section { break-before: page; background: #fff; }
 .pdf-section:first-child { break-before: auto; }
 .pdf-section--explanation { page: explanation; font-size: 10.5pt; line-height: 1.7; }
-.pdf-section--code { page: code; break-after: page; color: #e1e4e8; font-family: "Cascadia Mono", Consolas, monospace; }
+.pdf-section--code { page: code; break-after: page; color: #1f2937; font-family: "Cascadia Mono", Consolas, monospace; }
 .explanation-header { color: #64748b; font-size: 9pt; letter-spacing: .04em; text-transform: uppercase; border-bottom: 1px solid #cbd5e1; padding-bottom: 4mm; }
 h1 { color: #0f172a; font-size: 24pt; line-height: 1.25; margin: 8mm 0 7mm; }
 .markdown-body h2 { color: #1e293b; font-size: 15pt; margin-top: 7mm; }
@@ -326,21 +328,21 @@ h1 { color: #0f172a; font-size: 24pt; line-height: 1.25; margin: 8mm 0 7mm; }
 .markdown-body th, .markdown-body td { border: 1px solid #cbd5e1; padding: 2mm; text-align: left; }
 .mermaid { break-inside: avoid; margin: 6mm 0; text-align: center; }
 .mermaid svg { max-width: 100%; height: auto; }
-.code-header { display: flex; gap: 4mm; align-items: baseline; color: #cbd5e1; background: #111827; border-radius: 2mm 2mm 0 0; padding: 3.5mm 4mm; font-size: 9pt; }
-.code-header strong { color: #f8fafc; font-size: 10pt; }
-.code-header span:last-child { margin-left: auto; color: #94a3b8; }
-.code-block { background: #24292e; border: 1px solid #374151; border-top: 0; padding: 2mm 0; }
-.code-line { display: grid; grid-template-columns: 14mm 5mm minmax(0, 1fr); align-items: start; min-height: 1.55em; font-size: 8.5pt; line-height: 1.55; break-inside: avoid; }
-.code-line:not(.code-line--focused) { background: #24292e; }
-.code-line--focused { background: #263238; }
+.code-header { display: flex; gap: 4mm; align-items: baseline; color: #1e3a8a; background: #eff6ff; border: 1px solid #bfdbfe; border-bottom: 0; border-radius: 2mm 2mm 0 0; padding: 3.5mm 4mm; font-size: 9pt; }
+.code-header strong { color: #0f172a; font-size: 10pt; }
+.code-header span:last-child { margin-left: auto; color: #475569; }
+.code-block { background: #fff; border: 1px solid #cbd5e1; border-top: 0; padding: 2mm 0; }
+.code-line { display: grid; grid-template-columns: 14mm 5mm minmax(0, 1fr); align-items: start; min-height: 1.55em; background: #fff; font-size: 8.5pt; line-height: 1.55; break-inside: avoid; }
+.code-line--focused { box-shadow: inset 4px 0 #2563eb, inset 0 0 0 1px #2563eb; }
 .line-number { color: #6b7280; padding-right: 2mm; text-align: right; user-select: none; }
-.code-line code { color: #e1e4e8; font-family: inherit; white-space: pre-wrap; overflow-wrap: anywhere; min-width: 0; padding-right: 3mm; }
+.code-line--focused .line-number, .code-line--focused .diff-marker { color: #1d4ed8; font-weight: 700; }
+.code-line code { color: #1f2937; font-family: inherit; white-space: pre-wrap; overflow-wrap: anywhere; min-width: 0; padding-right: 3mm; }
 .diff-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 5mm; }
 .diff-grid h2 { color: #334155; font: 700 10pt "Malgun Gothic", "Segoe UI", sans-serif; margin: 3mm 0 2mm; }
-.diff-marker { color: #94a3b8; text-align: center; }
-.code-line--deleted { background: #3f1f24 !important; }
-.code-line--added { background: #1f3a2b !important; }
-.code-line--modified { background: #3a3420 !important; }
+.diff-marker { color: #64748b; text-align: center; }
+.code-line--deleted { background: #fee2e2; }
+.code-line--added { background: #dcfce7; }
+.code-line--modified { background: #fef3c7; }
 .pdf-layout--screen .pdf-section--code { break-after: page; break-inside: avoid-page; }
 .pdf-layout--screen .code-block { display: inline-block; min-width: 100%; width: max-content; }
 .pdf-layout--screen .code-line { grid-template-columns: 14mm 5mm max-content; width: max-content; }
