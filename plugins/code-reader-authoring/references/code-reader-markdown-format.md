@@ -76,8 +76,9 @@ Run the registered static-analysis bootstrap before asking a reviewer. It may in
 
 The page inventory records the analysis result for each resolved Source range and for both resolvable old/new Diff sides:
 
-- `V(G)` is the deterministic cyclomatic complexity of the selected definition or structurally complete SESE subregion. The inventory includes its decision nodes and locations.
-- `peak_live_bindings` is a deterministic local-binding proxy. Python and Lua profiles use backward lexical liveness; Tree-sitter profiles use profile-bound backward token liveness. It includes its peak location and binding names, but excludes heap/object fields, globals, aliases, and dynamic calls and may over- or under-count the reader's actual working-memory load. The static threshold is therefore a conservative split gate, not evidence that a lower value is safe.
+- `V(G)` and `peak_live_bindings` are deterministic only when the displayed range is a full definition or a complete structural SESE subregion within one definition. A selected range must align with complete syntax and control-flow boundaries; never substitute the enclosing function's metrics for a non-structural partial range.
+- `analysis_region.kind` is `definition` or `sese_region`. A `sese_region` records its owning definition, decision nodes, and peak binding evidence. Python and Lua use direct adapters; Tree-sitter languages use only their registered, lock-pinned grammar profiles.
+- `peak_live_bindings` is a local-binding proxy. It excludes heap/object fields, globals, aliases, dynamic calls, and values needed only outside a selected SESE region. Treat a low static value as reviewer input, not proof that the page is safe.
 - A Diff resolver first uses the old/new blob revision and path, then verifies hunk lines and context. For an unresolved side, the inventory records `hunk_fallback`, the attempted revision, and the reason instead of inventing a source range.
 
 The writing agent must split and re-run static validation without requesting a reviewer when either of these conditions is true:
@@ -85,7 +86,7 @@ The writing agent must split and re-run static validation without requesting a r
 - `V(G) >= 12` or `peak_live_bindings >= 9`.
 - Both `V(G) >= 11` and `peak_live_bindings >= 8`.
 
-An unavailable profile, parser failure, unresolved Diff source, or a lone non-extreme static warning is not a pass. It is input to Page Scope Review.
+An unavailable profile, parser failure, unresolved Diff source, or a non-SESE partial range sets `fallback_required: true`. It is not a pass: the Page Scope Review must measure the unavailable criteria from the page's actual scope.
 
 ## Page Scope Review v1
 
@@ -113,9 +114,11 @@ pages:
     focus_alignment: null # Required for Diff pages only.
     metrics:
       static:
+        status: SUPPORTED
         cyclomatic_complexity: 4
         peak_live_bindings: 3
       semantic:
+        cyclomatic_complexity: null # Required only when static_metrics.fallback_required is true.
         independent_concepts:
           count: 2
           items:
@@ -141,6 +144,30 @@ For every page, apply the following measurement procedure and record evidence in
 1. Verify that all resolved references lie inside one allowed definition. A hunk that crosses definitions must use a focused old/new range or become separate pages.
 2. Evaluate every H2+ heading by removing that heading and its explanation hypothetically. If doing so allows the page's Source or resolved Diff scope to become smaller, classify it as `scope_expanding` and require a new `---` page. Headings that explain the same range's input, output, invariant, or control order are `conceptual`.
 3. An unresolved Diff uses `hunk_fallback`: inspect the hunk body, context, and header only. If these do not establish one definition with sufficient confidence, return `CHANGES_REQUIRED`, never PASS.
+
+### Static-analysis fallback
+
+When a page inventory entry has `static_metrics.fallback_required: true`, use its `fallback_scope`, page references, and resolved Diff source to measure every unavailable criterion over the displayed page scope and add this report field:
+
+```yaml
+metrics:
+  static:
+    status: NOT_AVAILABLE
+    reason_code: NON_SESE_RANGE
+  semantic:
+    cyclomatic_complexity:
+      count: 4
+      confidence: exact # exact | lower_bound | unavailable
+      decision_points:
+        - kind: if
+          evidence: ["src/example.py#L14"]
+      rationale: "The complete displayed branch has one decision."
+```
+
+- Measure `V(G)` as one plus the decision points in the page's displayed Source or resolved Diff side. Use `exact` only when the source/revision establishes the complete selected scope and its definition boundary.
+- For `hunk_fallback`, measure only a supported `lower_bound` from hunk lines and context. A lower bound that reaches a split threshold requires `SPLIT_REQUIRED`; a lower bound below threshold cannot establish PASS by itself.
+- Preserve the existing independent-concept and variable--value procedures, but perform them on the same displayed scope. The static proxy and semantic variable-value count use the larger value when both are available.
+- If the reviewer cannot make an exact measurement from readable source or revision, record `unavailable` with evidence and return `CHANGES_REQUIRED`. Do not estimate a missing metric silently.
 
 ### Diff focus-side alignment
 
@@ -195,9 +222,9 @@ At each cognitively demanding execution point--immediately before a branch, outp
 
 - The page crosses a definition boundary or has a `scope_expanding` child heading.
 - `V(G) >= 12`, independent concepts `>= 6`, or variable--value pairs `>= 9`.
-- At least two normal violations: `V(G) >= 11`, independent concepts `>= 5`, and variable--value pairs `>= 8`.
+- At least two normal violations: `V(G) >= 11`, independent concepts `>= 5`, and variable--value pairs `>= 8`. Use deterministic `V(G)` when static analysis is supported; otherwise use the reviewer's exact fallback value.
 
-For a resolved Diff, use the more demanding old/new measurement. For `hunk_fallback`, count only supported lower bounds; if a lower bound triggers a rule, require a split. A Diff `focus_alignment` verdict other than `MATCH`, an unknown safe definition boundary, or an unknown cognitive load requires `CHANGES_REQUIRED`. The writing agent fixes every non-PASS page, then re-runs the static validator and a fresh Page Scope Review until the report is `overall_verdict: PASS`.
+For a resolved Diff, use the more demanding old/new measurement. For `hunk_fallback`, count only supported lower bounds; if a lower bound triggers a rule, require a split. A required fallback with no exact review measurement, a Diff `focus_alignment` verdict other than `MATCH`, an unknown safe definition boundary, or an unknown cognitive load requires `CHANGES_REQUIRED`. The writing agent fixes every non-PASS page, then re-runs the static validator and a fresh Page Scope Review until the report is `overall_verdict: PASS`.
 
 For diff documents, the report must also include a `hunk_coverage` table and list uncovered hunks. All hunks remain required unless the user explicitly requested a partial explanation.
 
