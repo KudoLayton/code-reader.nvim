@@ -302,20 +302,84 @@ function appendContext(rows, beforeLines, afterLines, oldLine, newLine, focused 
   });
 }
 
-function appendChangeRows(rows, deletes, adds) {
+function appendChangeRows(rows, deletes, adds, group) {
   const pairs = Math.min(deletes.length, adds.length);
   for (let index = 0; index < pairs; index += 1) {
     rows.push({
+      group,
       before: codeCell(deletes[index].oldLine, deletes[index].text, "~", "modified", true),
       after: codeCell(adds[index].newLine, adds[index].text, "~", "modified", true),
     });
   }
   for (const entry of deletes.slice(pairs)) {
-    rows.push({ before: codeCell(entry.oldLine, entry.text, "-", "deleted", true), after: blankCell() });
+    rows.push({ group, before: codeCell(entry.oldLine, entry.text, "-", "deleted", true), after: blankCell() });
   }
   for (const entry of adds.slice(pairs)) {
-    rows.push({ before: blankCell(), after: codeCell(entry.newLine, entry.text, "+", "added", true) });
+    rows.push({ group, before: blankCell(), after: codeCell(entry.newLine, entry.text, "+", "added", true) });
   }
+}
+
+function resolveReferenceRange(hunk, reference, padding) {
+  if (!reference?.side) {
+    return undefined;
+  }
+  const side = reference.side === "old" ? "before" : "after";
+  const sideStart = side === "before" ? hunk.oldStart : hunk.newStart;
+  const sideEnd = side === "before" ? hunk.oldEnd : hunk.newEnd;
+  const resolveBound = (bound, isStart) => {
+    if (!bound) {
+      return undefined;
+    }
+    if (bound.mode === "absolute") {
+      return bound.value;
+    }
+    return (isStart ? sideStart : sideEnd) + bound.value;
+  };
+  const partial = reference.startBound !== undefined || reference.endBound !== undefined;
+  const startLine = Math.max(
+    1,
+    reference.padding !== undefined
+      ? sideStart - reference.padding
+      : resolveBound(reference.startBound, true) ?? sideStart,
+  );
+  const endLine = Math.max(
+    startLine,
+    reference.padding !== undefined
+      ? sideEnd + reference.padding
+      : resolveBound(reference.endBound, false) ?? sideEnd,
+  );
+  return {
+    side,
+    startLine,
+    endLine,
+    outputStart: Math.max(1, startLine - padding),
+    outputEnd: endLine + padding,
+    partial,
+  };
+}
+
+function isWithinRange(cell, startLine, endLine) {
+  return cell.number !== undefined && cell.number >= startLine && cell.number <= endLine;
+}
+
+function cropDiffRows(rows, range) {
+  if (!range.partial) {
+    return rows;
+  }
+  const includedGroups = new Set();
+  for (const row of rows) {
+    if (row.group === undefined) {
+      continue;
+    }
+    if ([row.before, row.after].some((cell) => isWithinRange(cell, range.outputStart, range.outputEnd))) {
+      includedGroups.add(row.group);
+    }
+  }
+  return rows.filter(
+    (row) =>
+      isWithinRange(row[range.side], range.outputStart, range.outputEnd) ||
+      (row.group !== undefined && includedGroups.has(row.group)),
+  );
 }
 
 export function renderDiffSnippet(hunk, options = {}) {
@@ -332,6 +396,7 @@ export function renderDiffSnippet(hunk, options = {}) {
     }
   }
 
+  let changeGroup = 0;
   for (let index = 0; index < hunk.lines.length; ) {
     const entry = hunk.lines[index];
     if (entry.kind === "context") {
@@ -354,7 +419,8 @@ export function renderDiffSnippet(hunk, options = {}) {
       }
       index += 1;
     }
-    appendChangeRows(rows, deletes, adds);
+    appendChangeRows(rows, deletes, adds, changeGroup);
+    changeGroup += 1;
   }
 
   for (let offset = 1; offset <= padding; offset += 1) {
@@ -365,43 +431,16 @@ export function renderDiffSnippet(hunk, options = {}) {
     }
   }
 
-  const reference = options.reference;
-  if (reference?.side) {
-    const sideStart = reference.side === "old" ? hunk.oldStart : hunk.newStart;
-    const sideEnd = reference.side === "old" ? hunk.oldEnd : hunk.newEnd;
-    const resolveBound = (bound, isStart) => {
-      if (!bound) {
-        return undefined;
-      }
-      if (bound.mode === "absolute") {
-        return bound.value;
-      }
-      return (isStart ? sideStart : sideEnd) + bound.value;
-    };
-    const startLine = Math.max(
-      1,
-      reference.padding !== undefined
-        ? sideStart - reference.padding
-        : resolveBound(reference.startBound, true) ?? sideStart,
-    );
-    const endLine = Math.max(
-      startLine,
-      reference.padding !== undefined
-        ? sideEnd + reference.padding
-        : resolveBound(reference.endBound, false) ?? sideEnd,
-    );
-
+  const range = resolveReferenceRange(hunk, options.reference, padding);
+  if (range) {
     for (const row of rows) {
-      for (const [side, cell] of [
-        ["old", row.before],
-        ["new", row.after],
-      ]) {
-        cell.focused = side === reference.side && cell.number >= startLine && cell.number <= endLine;
+      for (const [side, cell] of [["before", row.before], ["after", row.after]]) {
+        cell.focused = side === range.side && isWithinRange(cell, range.startLine, range.endLine);
       }
     }
   }
 
-  return { rows };
+  return { rows: range ? cropDiffRows(rows, range) : rows };
 }
 
 function hunkSideLines(hunk, side) {

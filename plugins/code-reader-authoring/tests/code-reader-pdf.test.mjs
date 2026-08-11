@@ -139,6 +139,57 @@ test("parses a unified diff and renders a padded side-by-side hunk", async () =>
   });
   assert.equal(sideFocused.rows[0].before.focused, false);
   assert.equal(sideFocused.rows[0].after.focused, true);
+
+  const partial = renderDiffSnippet(file.hunks[0], {
+    padding: 1,
+    beforeLines: [
+      "local request = {}",
+      "",
+      "function request.parse_request(raw_request)",
+      '  local method = raw_request.method or "GET"',
+      '  local path = raw_request.path or "/"',
+      '  local user = raw_request.user or "anonymous"',
+      "",
+      "  return {",
+      "    method = method,",
+      "    path = path,",
+      "    user = user,",
+      "  }",
+      "end",
+    ],
+    afterLines: [
+      "local request = {}",
+      "",
+      "function request.parse_request(raw_request)",
+      '  local method = raw_request.method or "GET"',
+      '  local user = raw_request.user or "anonymous"',
+      '  local path = path or "/"',
+      '  local request_id = raw_request.request_id or "demo-request"',
+      "",
+      "  return {",
+      "    method = method,",
+      "    path = path,",
+      "    user = user,",
+      "    request_id = request_id,",
+      "  }",
+      "end",
+    ],
+    reference: {
+      side: "new",
+      startBound: { mode: "absolute", value: 5 },
+      endBound: { mode: "absolute", value: 5 },
+    },
+  });
+  assert.equal(partial.rows.some((row) => row.after.number === 3), false);
+  assert.equal(partial.rows.some((row) => row.after.number === 4), true);
+  assert.equal(partial.rows.some((row) => row.after.number === 5), true);
+  assert.equal(partial.rows.some((row) => row.after.number === 6), true);
+  assert.equal(partial.rows.some((row) => row.after.number === 7), true);
+  assert.equal(partial.rows.some((row) => row.after.number === 8), false);
+  assert.deepEqual(
+    partial.rows.filter((row) => row.after.focused).map((row) => row.after.number),
+    [5],
+  );
 });
 
 test("generates a PDF with Mermaid and separate portrait and landscape pages", async () => {
