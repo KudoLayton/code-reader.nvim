@@ -1,0 +1,75 @@
+{
+  "schema": "code-reader-static-analysis-profiles/v1",
+  "profiles": {
+    "c": {
+      "extensions": [".c", ".h"],
+      "backend": "tree-sitter-v1",
+      "grammar_module": "tree_sitter_c",
+      "definition_nodes": ["function_definition"],
+      "decision_nodes": ["if_statement", "for_statement", "while_statement", "do_statement", "case_statement", "binary_expression"],
+      "binding_nodes": ["parameter_declaration", "declaration", "init_declarator"],
+      "required_dependencies": [{"name": "tree-sitter-c", "version": "0.24.1"}]
+    },
+    "cpp": {
+      "extensions": [".cc", ".cpp", ".cxx", ".c++", ".hh", ".hpp", ".hxx"],
+      "backend": "tree-sitter-v1",
+      "grammar_module": "tree_sitter_cpp",
+      "definition_nodes": ["function_definition", "lambda_expression"],
+      "decision_nodes": ["if_statement", "for_statement", "while_statement", "do_statement", "case_statement", "catch_clause", "conditional_expression", "binary_expression"],
+      "binding_nodes": ["parameter_declaration", "declaration", "init_declarator"],
+      "required_dependencies": [{"name": "tree-sitter-cpp", "version": "0.23.4"}]
+    },
+    "go": {
+      "extensions": [".go"],
+      "backend": "tree-sitter-v1",
+      "grammar_module": "tree_sitter_go",
+      "definition_nodes": ["function_declaration", "method_declaration", "func_literal"],
+      "decision_nodes": ["if_statement", "for_statement", "expression_switch_statement", "type_switch_statement", "communication_case", "binary_expression"],
+      "binding_nodes": ["parameter_declaration", "var_spec", "short_var_declaration", "range_clause"],
+      "required_dependencies": [{"name": "tree-sitter-go", "version": "0.23.4"}]
+    },
+    "javascript": {
+      "extensions": [".js", ".mjs", ".cjs", ".jsx"],
+      "backend": "tree-sitter-v1",
+      "grammar_module": "tree_sitter_javascript",
+      "definition_nodes": ["function_declaration", "function_expression", "arrow_function", "method_definition", "generator_function_declaration"],
+      "decision_nodes": ["if_statement", "for_statement", "for_in_statement", "while_statement", "do_statement", "switch_case", "catch_clause", "ternary_expression", "binary_expression"],
+      "binding_nodes": ["formal_parameters", "variable_declarator", "required_parameter", "optional_parameter"],
+      "required_dependencies": [{"name": "tree-sitter-javascript", "version": "0.23.1"}]
+    },
+    "lua": {
+      "extensions": [".lua"],
+      "backend": "stdlib-lua-lexer-v1",
+      "required_dependencies": []
+    },
+    "python": {
+      "extensions": [".py", ".pyi"],
+      "backend": "stdlib-python-ast-v1",
+      "required_dependencies": []
+    },
+    "rust": {
+      "extensions": [".rs"],
+      "backend": "tree-sitter-v1",
+      "grammar_module": "tree_sitter_rust",
+      "definition_nodes": ["function_item", "closure_expression"],
+      "decision_nodes": ["if_expression", "for_expression", "while_expression", "loop_expression", "match_arm", "binary_expression"],
+      "binding_nodes": ["parameters", "let_declaration", "closure_parameters"],
+      "required_dependencies": [{"name": "tree-sitter-rust", "version": "0.23.2"}]
+    },
+    "typescript": {
+      "extensions": [".ts", ".tsx", ".mts", ".cts"],
+      "backend": "tree-sitter-v1",
+      "grammar_module": "tree_sitter_typescript",
+      "grammar_symbol_by_extension": {
+        ".ts": "language_typescript",
+        ".mts": "language_typescript",
+        ".cts": "language_typescript",
+        ".tsx": "language_tsx"
+      },
+      "definition_nodes": ["function_declaration", "function_expression", "arrow_function", "method_definition", "generator_function_declaration"],
+      "decision_nodes": ["if_statement", "for_statement", "for_in_statement", "while_statement", "do_statement", "switch_case", "catch_clause", "ternary_expression", "binary_expression"],
+      "binding_nodes": ["formal_parameters", "variable_declarator", "required_parameter", "optional_parameter"],
+      "required_dependencies": [{"name": "tree-sitter-typescript", "version": "0.23.2"}]
+    }
+  }
+}
