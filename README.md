@@ -107,16 +107,18 @@ npm install
 From the repository root, generate a source walkthrough PDF:
 
 ```powershell
-npm run pdf -- -- demo/basic/.code_reader/walkthrough.md --root demo/basic --output output/pdf/walkthrough.pdf
+npm run pdf -- -- demo/basic/.code_reader/walkthrough.md --root demo/basic
 ```
+
+When `--output` is omitted, the PDF is created beside its Markdown input. The command above writes `demo/basic/.code_reader/walkthrough.pdf`. Override this with `--output <pdf-file>` when the PDF belongs elsewhere.
 
 Or run the same CLI from the installed Codex plugin directory:
 
 ```powershell
-node scripts/code-reader-pdf.mjs <markdown-file> --root <project-root> --output <pdf-file>
+node scripts/code-reader-pdf.mjs <markdown-file> --root <project-root> [--output <pdf-file>]
 ```
 
-`--padding <n>` controls the context lines around a Source or Diff range and defaults to `5`. Use `--browser <path>` when Chrome or Edge is not installed in its standard Windows location. Explanation sections use A4 portrait pages; each referenced source or side-by-side diff begins on a separate A4 landscape page.
+`--padding <n>` controls the context lines around a Source or Diff range and defaults to `5`. Use `--browser <path>` when Chrome or Edge is not installed in its standard Windows location. The default `--layout print` uses A4 portrait explanation pages and A4 landscape code pages. Use `--layout screen` for screen-only PDFs: each code or side-by-side diff page expands to its rendered width, preventing automatic code-line wrapping; short blocks stay on one code page.
 
 ## Demo
 
