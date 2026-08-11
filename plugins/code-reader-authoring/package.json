@@ -1,0 +1,22 @@
+{
+  "name": "code-reader-authoring-pdf",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "pdf": "node scripts/code-reader-pdf.mjs",
+    "test:pdf": "node --test tests/code-reader-pdf.test.mjs"
+  },
+  "dependencies": {
+    "mermaid": "^11.16.1",
+    "puppeteer-core": "^25.5.0",
+    "rehype-stringify": "^10.0.1",
+    "remark-gfm": "^4.0.1",
+    "remark-parse": "^11.0.0",
+    "remark-rehype": "^11.1.2",
+    "shiki": "^4.4.3",
+    "unified": "^11.0.5"
+  },
+  "devDependencies": {
+    "pdf-lib": "^1.17.1"
+  }
+}
