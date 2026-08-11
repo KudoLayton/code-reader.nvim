@@ -120,6 +120,8 @@ node scripts/code-reader-pdf.mjs <markdown-file> --root <project-root> [--output
 
 `--padding <n>` controls the context lines around a Source or Diff range and defaults to `5`. Use `--browser <path>` when Chrome or Edge is not installed in its standard Windows location. The default `--layout print` uses A4 portrait explanation pages and A4 landscape code pages. Use `--layout screen` for screen-only PDFs: each code or side-by-side diff reference uses one custom-sized page that expands to its rendered width and height, preventing automatic code-line wrapping and splitting; the following explanation always starts on a new page.
 
+A ranged Diff reference such as `src/app.lua#H1@new:L10-L20` renders only the selected side range and its padding. Contiguous additions or deletions that belong to the selected change are kept to preserve the Before/After alignment. Omit the side range to render the entire hunk.
+
 ## Demo
 
 This repository includes an inert demo project under `demo/basic`. The demo files are shipped with the plugin, but they are not in Neovim auto-load directories and do not affect startup or runtime behavior unless opened explicitly.
