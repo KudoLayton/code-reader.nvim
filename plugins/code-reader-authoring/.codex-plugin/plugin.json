@@ -1,6 +1,6 @@
 {
   "name": "code-reader-authoring",
-  "version": "0.2.1+codex.20260811231705",
+  "version": "0.2.1+codex.20260811235141",
   "description": "Author Code Reader walkthrough markdown and render it as formatted PDF.",
   "author": {
     "name": "KudoLayton",
