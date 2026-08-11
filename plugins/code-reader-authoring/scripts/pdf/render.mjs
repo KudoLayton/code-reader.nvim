@@ -314,7 +314,7 @@ html, body { margin: 0; color: #1f2937; background: #fff; font-family: "Malgun G
 .pdf-section { break-before: page; }
 .pdf-section:first-child { break-before: auto; }
 .pdf-section--explanation { page: explanation; font-size: 10.5pt; line-height: 1.7; }
-.pdf-section--code { page: code; color: #e1e4e8; font-family: "Cascadia Mono", Consolas, monospace; }
+.pdf-section--code { page: code; break-after: page; color: #e1e4e8; font-family: "Cascadia Mono", Consolas, monospace; }
 .explanation-header { color: #64748b; font-size: 9pt; letter-spacing: .04em; text-transform: uppercase; border-bottom: 1px solid #cbd5e1; padding-bottom: 4mm; }
 h1 { color: #0f172a; font-size: 24pt; line-height: 1.25; margin: 8mm 0 7mm; }
 .markdown-body h2 { color: #1e293b; font-size: 15pt; margin-top: 7mm; }
@@ -341,7 +341,7 @@ h1 { color: #0f172a; font-size: 24pt; line-height: 1.25; margin: 8mm 0 7mm; }
 .code-line--deleted { background: #3f1f24 !important; }
 .code-line--added { background: #1f3a2b !important; }
 .code-line--modified { background: #3a3420 !important; }
-.pdf-layout--screen .pdf-section--code { break-inside: avoid-page; }
+.pdf-layout--screen .pdf-section--code { break-after: page; break-inside: avoid-page; }
 .pdf-layout--screen .code-block { display: inline-block; min-width: 100%; width: max-content; }
 .pdf-layout--screen .code-line { grid-template-columns: 14mm 5mm max-content; width: max-content; }
 .pdf-layout--screen .code-line code { min-width: max-content; overflow-wrap: normal; white-space: pre; }

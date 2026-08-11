@@ -189,10 +189,13 @@ test("generates a screen-layout code page without wrapping a long source line", 
   const temporaryDirectory = await mkdtemp(path.join(os.tmpdir(), "code-reader-screen-pdf-"));
   const markdownPath = path.join(temporaryDirectory, "walkthrough.md");
   const sourcePath = path.join(temporaryDirectory, "wide.lua");
+  const nextSourcePath = path.join(temporaryDirectory, "next.lua");
   const output = path.join(temporaryDirectory, "walkthrough.pdf");
   const longLine = `local request_path = \"/${"segment/".repeat(120)}resource\"`;
+  const sourceLines = Array.from({ length: 80 }, (_, index) => `${longLine} -- ${index + 1}`);
 
-  await writeFile(sourcePath, `${longLine}\n`, "utf8");
+  await writeFile(sourcePath, `${sourceLines.join("\n")}\n`, "utf8");
+  await writeFile(nextSourcePath, "return true\n", "utf8");
   await writeFile(
     markdownPath,
     [
@@ -207,7 +210,12 @@ test("generates a screen-layout code page without wrapping a long source line", 
       "---",
       "# Wide source",
       "",
-      "Source: `wide.lua#L1`",
+      "Source: `wide.lua#L1-L80`",
+      "",
+      "---",
+      "# Next explanation",
+      "",
+      "Source: `next.lua#L1`",
     ].join("\n"),
     "utf8",
   );
@@ -227,8 +235,11 @@ test("generates a screen-layout code page without wrapping a long source line", 
     const pdf = await PDFDocument.load(await readFile(output));
     const dimensions = pdf.getPages().map((page) => page.getSize());
 
-    assert.equal(pdf.getPageCount(), 3);
-    assert.equal(dimensions.some((size) => size.width > 842), true);
+    assert.equal(pdf.getPageCount(), 5);
+    assert.equal(dimensions[2].width > 842, true);
+    assert.equal(dimensions[2].height > 595, true);
+    assert.equal(dimensions[3].height > dimensions[3].width, true);
+    assert.equal(dimensions[4].width > dimensions[4].height, true);
   } finally {
     await rm(temporaryDirectory, { recursive: true, force: true });
   }
