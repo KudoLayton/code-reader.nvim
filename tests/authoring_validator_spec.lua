@@ -34,6 +34,14 @@ vim.fn.writefile({
   "  return total",
   "end",
 }, tmp .. "/src/complex.lua")
+vim.fn.writefile({
+  "local function adjust(value)",
+  "  if value then",
+  "    return value + 1",
+  "  end",
+  "  return value",
+  "end",
+}, tmp .. "/src/partial.lua")
 
 local validator = vim.fn.getcwd() .. "/plugins/code-reader-authoring/scripts/validate_code_reader_markdown.py"
 local python = vim.fn.exepath("python")
@@ -105,6 +113,61 @@ write_lines(valid_path, source_document({
 }))
 local valid_status = run_validator(valid_path)
 eq(valid_status, 0, "validator accepts one Source reference in the preamble and conceptual child heading")
+
+local partial_path = tmp .. "/partial.md"
+write_lines(partial_path, source_document({
+  "Source: `src/partial.lua#L2-L4`",
+  "",
+  "Explain the complete conditional branch.",
+}))
+local partial_inventory_path = tmp .. "/partial-page-inventory.json"
+local partial_status = run_validator(partial_path, { "--emit-page-inventory", partial_inventory_path })
+eq(partial_status, 0, "validator analyzes a complete partial Source region")
+local partial_inventory = vim.fn.json_decode(table.concat(vim.fn.readfile(partial_inventory_path), "\n"))
+eq(partial_inventory.pages[1].static_metrics.status, "SUPPORTED", "complete partial Source region has static metrics")
+eq(partial_inventory.pages[1].static_metrics.analysis_region.kind, "sese_region", "inventory identifies a structural partial region")
+
+local cut_partial_path = tmp .. "/cut-partial.md"
+write_lines(cut_partial_path, source_document({
+  "Source: `src/partial.lua#L2-L3`",
+  "",
+  "Explain only part of a conditional branch.",
+}))
+local cut_partial_inventory_path = tmp .. "/cut-partial-page-inventory.json"
+local cut_partial_status = run_validator(cut_partial_path, { "--emit-page-inventory", cut_partial_inventory_path })
+eq(cut_partial_status, 0, "validator defers a non-structural partial Source range to semantic review")
+local cut_partial_inventory = vim.fn.json_decode(table.concat(vim.fn.readfile(cut_partial_inventory_path), "\n"))
+eq(cut_partial_inventory.pages[1].static_metrics.status, "NOT_AVAILABLE", "cut partial Source region has no invented static metric")
+eq(cut_partial_inventory.pages[1].static_metrics.fallback_required, true, "cut partial Source region requires reviewer fallback")
+eq(cut_partial_inventory.pages[1].static_metrics.fallback_scope.definition.name, "adjust", "fallback retains the enclosing definition")
+
+vim.fn.writefile({
+  "diff --git a/src/partial.lua b/src/partial.lua",
+  "--- a/src/partial.lua",
+  "+++ b/src/partial.lua",
+  "@@ -1,6 +1,6 @@",
+  " local function adjust(value)",
+  "-  if value == true then",
+  "+  if value then",
+  "     return value + 1",
+  "   end",
+  "   return value",
+  " end",
+}, tmp .. "/partial-change.diff")
+local partial_diff_path = tmp .. "/partial-diff.md"
+local partial_diff_lines = diff_document({
+  "Diff: `src/partial.lua#H1@new:L2-L4`",
+  "",
+  "Explain the complete changed conditional branch.",
+})
+partial_diff_lines[4] = "diff: ./partial-change.diff"
+write_lines(partial_diff_path, partial_diff_lines)
+local partial_diff_inventory_path = tmp .. "/partial-diff-page-inventory.json"
+local partial_diff_status = run_validator(partial_diff_path, { "--emit-page-inventory", partial_diff_inventory_path })
+eq(partial_diff_status, 0, "validator analyzes a complete focused Diff region")
+local partial_diff_inventory = vim.fn.json_decode(table.concat(vim.fn.readfile(partial_diff_inventory_path), "\n"))
+eq(partial_diff_inventory.pages[1].static_metrics.status, "SUPPORTED", "focused Diff region has static metrics")
+eq(partial_diff_inventory.pages[1].static_metrics.analysis_region.kind, "sese_region", "focused Diff region uses structural analysis")
 
 local invalid_path = tmp .. "/invalid.md"
 write_lines(invalid_path, source_document({

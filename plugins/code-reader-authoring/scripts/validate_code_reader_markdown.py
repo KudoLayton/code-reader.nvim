@@ -632,6 +632,9 @@ def analyze_source_scope(path: str, text: str, start_line: int, end_line: int) -
         return {
             "status": "NOT_AVAILABLE",
             "reason": f"static metrics module is unavailable: {error}",
+            "reason_code": "ANALYZER_UNAVAILABLE",
+            "fallback_required": True,
+            "fallback_scope": {"path": path, "start_line": start_line, "end_line": end_line},
             "analysis_region": None,
             "evidence": [],
         }
@@ -642,41 +645,34 @@ def analyze_source_scope(path: str, text: str, start_line: int, end_line: int) -
         return {
             "status": "NOT_AVAILABLE",
             "reason": bootstrap.get("reason", "registered static-analysis dependencies are unavailable"),
+            "reason_code": "ANALYZER_UNAVAILABLE",
+            "fallback_required": True,
+            "fallback_scope": {"path": path, "start_line": start_line, "end_line": end_line},
             "analysis_region": None,
             "evidence": [],
         }
     site_packages = bootstrap.get("site_packages")
     if site_packages and site_packages not in sys.path:
         sys.path.insert(0, site_packages)
-    result = static_metrics.analyze_text(text, language, path)
+    result = static_metrics.analyze_range_text(text, language, path, start_line, end_line)
     if result.get("status") != "SUPPORTED":
         return {
             "status": result.get("status", "NOT_AVAILABLE"),
             "reason": result.get("reason", "language profile is unavailable"),
+            "reason_code": result.get("reason_code"),
+            "fallback_required": True,
+            "fallback_scope": result.get("selection"),
             "analysis_region": None,
             "evidence": [],
         }
-    definition = static_metrics.select_definition_for_range(result, start_line, end_line)
-    if not definition:
-        return {
-            "status": "NOT_AVAILABLE",
-            "reason": "source range is not fully contained in a single supported definition",
-            "analysis_region": None,
-            "evidence": [],
-        }
-    definition_metrics = definition.get("metrics", {})
+    range_metrics = result.get("metrics", {})
     return {
         "status": "SUPPORTED",
-        "cyclomatic_complexity": definition_metrics.get("cyclomatic_complexity"),
-        "peak_live_bindings": definition_metrics.get("peak_live_bindings"),
-        "analysis_region": {
-            "kind": definition.get("kind"),
-            "name": definition.get("name"),
-            "path": path,
-            "start_line": definition.get("start_line"),
-            "end_line": definition.get("end_line"),
-        },
-        "evidence": definition_metrics.get("evidence", []),
+        "cyclomatic_complexity": range_metrics.get("cyclomatic_complexity"),
+        "peak_live_bindings": range_metrics.get("peak_live_bindings"),
+        "fallback_required": False,
+        "analysis_region": result.get("analysis_region"),
+        "evidence": range_metrics.get("evidence", []),
     }
 
 
@@ -708,9 +704,20 @@ def heading_data(lines: list[str]) -> list[dict[str, Any]]:
 def page_static_metrics_from_diff(resolutions: list[dict[str, Any]]) -> tuple[dict[str, Any], list[str]]:
     analyzed: list[dict[str, Any]] = []
     region_keys: set[tuple[Any, ...]] = set()
+    fallback_reasons: list[dict[str, Any]] = []
     for resolution in resolutions:
         source_text = resolution.pop("source_text", None)
         if resolution.get("status") != "resolved" or source_text is None:
+            fallback_reasons.append(
+                {
+                    "side": resolution.get("side"),
+                    "status": resolution.get("status"),
+                    "path": resolution.get("path"),
+                    "start_line": resolution.get("start_line"),
+                    "end_line": resolution.get("end_line"),
+                    "reason": resolution.get("reason", "Diff source could not be resolved"),
+                }
+            )
             continue
         metrics = analyze_source_scope(
             resolution["path"], source_text, resolution["start_line"], resolution["end_line"]
@@ -719,11 +726,29 @@ def page_static_metrics_from_diff(resolutions: list[dict[str, Any]]) -> tuple[di
         if metrics.get("status") == "SUPPORTED":
             analyzed.append(metrics)
             region = metrics.get("analysis_region") or {}
-            region_keys.add((region.get("path"), region.get("kind"), region.get("name")))
+            owner = region.get("definition") or region
+            region_keys.add((owner.get("path", region.get("path")), owner.get("id"), owner.get("name")))
+        else:
+            fallback_reasons.append(
+                {
+                    "side": resolution.get("side"),
+                    "status": metrics.get("status"),
+                    "scope": metrics.get("fallback_scope"),
+                    "reason_code": metrics.get("reason_code"),
+                    "reason": metrics.get("reason"),
+                }
+            )
 
     if not analyzed:
         reason = "no diff side could be statically analyzed"
-        return {"status": "NOT_AVAILABLE", "reason": reason, "analysis_region": None, "evidence": []}, []
+        return {
+            "status": "NOT_AVAILABLE",
+            "reason": reason,
+            "fallback_required": True,
+            "fallback_reasons": fallback_reasons,
+            "analysis_region": None,
+            "evidence": [],
+        }, []
 
     highest_complexity = max(analyzed, key=lambda item: item["cyclomatic_complexity"])
     highest_bindings = max(analyzed, key=lambda item: item["peak_live_bindings"])
@@ -733,6 +758,8 @@ def page_static_metrics_from_diff(resolutions: list[dict[str, Any]]) -> tuple[di
         "peak_live_bindings": highest_bindings["peak_live_bindings"],
         "analysis_region": highest_complexity.get("analysis_region"),
         "evidence": highest_complexity.get("evidence", []) + highest_bindings.get("evidence", []),
+        "fallback_required": bool(fallback_reasons),
+        "fallback_reasons": fallback_reasons,
     }
     errors = []
     if len(region_keys) > 1:
@@ -788,7 +815,13 @@ def build_inventory(project_root: Path, markdown_path: Path, allow_partial_diff:
             "child_headings": heading_data(section_lines)[1:],
             "source_refs": source_ref_data(section_lines),
             "diff_refs": diff_ref_data(section_lines),
-            "static_metrics": {"status": "NOT_AVAILABLE", "analysis_region": None, "evidence": []},
+            "static_metrics": {
+                "status": "NOT_AVAILABLE",
+                "reason_code": "NO_ANALYSIS_TARGET",
+                "fallback_required": True,
+                "analysis_region": None,
+                "evidence": [],
+            },
             "static_verdict": "NOT_AVAILABLE",
         }
         if not is_front_page:

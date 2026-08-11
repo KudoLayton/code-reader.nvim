@@ -73,6 +73,105 @@ end
         self.assertEqual(definition["metrics"]["cyclomatic_complexity"], 4)
         self.assertGreaterEqual(definition["metrics"]["peak_live_bindings"], 2)
 
+    def test_python_complete_partial_region_has_its_own_metrics(self) -> None:
+        source = """\
+def adjust(value):
+    current = value
+    if current:
+        current += 1
+    return current
+"""
+        result = static_metrics.analyze_range_text(source, "python", "adjust.py", 3, 4)
+
+        self.assertEqual(result["status"], static_metrics.SUPPORTED)
+        self.assertFalse(result["fallback_required"])
+        self.assertEqual(result["analysis_region"]["kind"], "sese_region")
+        self.assertEqual(result["analysis_region"]["start_line"], 3)
+        self.assertEqual(result["analysis_region"]["end_line"], 4)
+        self.assertEqual(result["metrics"]["cyclomatic_complexity"], 2)
+        self.assertEqual(result["analysis_region"]["definition"]["name"], "adjust")
+
+    def test_python_cut_control_statement_requires_fallback(self) -> None:
+        source = """\
+def adjust(value):
+    current = value
+    if current:
+        current += 1
+    return current
+"""
+        result = static_metrics.analyze_range_text(source, "python", "adjust.py", 3, 3)
+
+        self.assertEqual(result["status"], static_metrics.NOT_AVAILABLE)
+        self.assertTrue(result["fallback_required"])
+        self.assertEqual(result["reason_code"], "NON_SESE_RANGE")
+
+    def test_python_comment_and_blank_padding_do_not_cut_a_region(self) -> None:
+        source = """\
+def adjust(value):
+    current = value
+
+    # Apply the selected branch.
+    if current:
+        current += 1
+    return current
+"""
+        result = static_metrics.analyze_range_text(source, "python", "adjust.py", 3, 6)
+
+        self.assertEqual(result["status"], static_metrics.SUPPORTED)
+        self.assertEqual(result["analysis_region"]["start_line"], 5)
+        self.assertEqual(result["analysis_region"]["end_line"], 6)
+
+    def test_lua_complete_partial_region_has_its_own_metrics(self) -> None:
+        source = """\
+local function adjust(value)
+  if value then
+    return value + 1
+  end
+  return value
+end
+"""
+        result = static_metrics.analyze_range_text(source, "lua", "adjust.lua", 2, 4)
+
+        self.assertEqual(result["status"], static_metrics.SUPPORTED)
+        self.assertFalse(result["fallback_required"])
+        self.assertEqual(result["analysis_region"]["kind"], "sese_region")
+        self.assertEqual(result["metrics"]["cyclomatic_complexity"], 2)
+
+    def test_lua_cut_control_statement_requires_fallback(self) -> None:
+        source = """\
+local function adjust(value)
+  if value then
+    return value + 1
+  end
+  return value
+end
+"""
+        result = static_metrics.analyze_range_text(source, "lua", "adjust.lua", 2, 3)
+
+        self.assertEqual(result["status"], static_metrics.NOT_AVAILABLE)
+        self.assertTrue(result["fallback_required"])
+        self.assertEqual(result["reason_code"], "NON_SESE_RANGE")
+
+    def test_lua_complete_statement_region_has_metrics(self) -> None:
+        source = """\
+local function adjust(value)
+  if value then
+    return value + 1
+  end
+  return value
+end
+"""
+        result = static_metrics.analyze_range_text(source, "lua", "adjust.lua", 5, 5)
+
+        self.assertEqual(result["status"], static_metrics.SUPPORTED)
+        self.assertEqual(result["analysis_region"]["kind"], "sese_region")
+        self.assertEqual(result["metrics"]["cyclomatic_complexity"], 1)
+
+    def test_tree_sitter_profiles_define_structural_region_nodes(self) -> None:
+        for language, profile in static_metrics.load_profiles().items():
+            if profile["backend"] == "tree-sitter-v1":
+                self.assertTrue(profile.get("region_nodes"), language)
+
     def test_registered_language_requires_its_pinned_parser(self) -> None:
         result = static_metrics.analyze_text("function value() {}", "typescript", "value.ts")
 
@@ -108,6 +207,7 @@ end
 
         self.assertEqual(result["status"], static_metrics.SUPPORTED)
         self.assertEqual(result["selection"]["definition"]["name"], "add")
+        self.assertEqual(result["range_analysis"]["analysis_region"]["kind"], "definition")
 
 
 if __name__ == "__main__":

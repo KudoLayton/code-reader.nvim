@@ -100,6 +100,37 @@ def _definition(
     live_method: str,
     live_limitations: list[str],
 ) -> dict[str, Any]:
+    metrics = _metrics(
+        cyclomatic_complexity=cyclomatic_complexity,
+        decision_points=decision_points,
+        peak_live_bindings=peak_live_bindings,
+        peak_line=peak_line,
+        peak_names=peak_names,
+        live_method=live_method,
+        live_limitations=live_limitations,
+    )
+    return {
+        "id": f"{language}:{qualified_name}:{start_line}",
+        "name": name,
+        "qualified_name": qualified_name,
+        "kind": kind,
+        "start_line": start_line,
+        "end_line": end_line,
+        "range": {"start_line": start_line, "end_line": end_line},
+        "metrics": metrics,
+    }
+
+
+def _metrics(
+    *,
+    cyclomatic_complexity: int,
+    decision_points: list[dict[str, Any]],
+    peak_live_bindings: int,
+    peak_line: int | None,
+    peak_names: list[str],
+    live_method: str,
+    live_limitations: list[str],
+) -> dict[str, Any]:
     evidence: list[dict[str, Any]] = [
         {
             "metric": "cyclomatic_complexity",
@@ -117,19 +148,71 @@ def _definition(
         },
     ]
     return {
-        "id": f"{language}:{qualified_name}:{start_line}",
-        "name": name,
-        "qualified_name": qualified_name,
-        "kind": kind,
-        "start_line": start_line,
-        "end_line": end_line,
-        "range": {"start_line": start_line, "end_line": end_line},
-        "metrics": {
-            "cyclomatic_complexity": cyclomatic_complexity,
-            "peak_live_bindings": peak_live_bindings,
-            "evidence": evidence,
-        },
+        "cyclomatic_complexity": cyclomatic_complexity,
+        "peak_live_bindings": peak_live_bindings,
+        "evidence": evidence,
     }
+
+
+def _definition_identity(definition: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "id": definition["id"],
+        "name": definition["name"],
+        "qualified_name": definition["qualified_name"],
+        "kind": definition["kind"],
+        "start_line": definition["start_line"],
+        "end_line": definition["end_line"],
+    }
+
+
+def _trim_non_code_range(text: str, start_line: int, end_line: int) -> tuple[int, int] | None:
+    lines = text.replace("\r\n", "\n").replace("\r", "\n").split("\n")
+    if start_line < 1 or end_line < start_line or end_line > len(lines):
+        return None
+    comment_prefixes = ("#", "--", "//", "/*", "*", "*/")
+    selected = [
+        number
+        for number in range(start_line, end_line + 1)
+        if (stripped := lines[number - 1].strip()) and not stripped.startswith(comment_prefixes)
+    ]
+    if not selected:
+        return None
+    return selected[0], selected[-1]
+
+
+def _range_result(
+    analysis: dict[str, Any],
+    start_line: int,
+    end_line: int,
+    *,
+    status: str,
+    definition: dict[str, Any] | None = None,
+    metrics: dict[str, Any] | None = None,
+    analysis_region: dict[str, Any] | None = None,
+    reason_code: str | None = None,
+    reason: str | None = None,
+) -> dict[str, Any]:
+    result = {
+        "schema": SCHEMA,
+        "path": analysis["path"],
+        "language": analysis["language"],
+        "backend": analysis["backend"],
+        "status": status,
+        "selection": {
+            "start_line": start_line,
+            "end_line": end_line,
+            "definition": _definition_identity(definition) if definition else None,
+        },
+        "analysis_region": analysis_region,
+        "fallback_required": status != SUPPORTED,
+    }
+    if metrics:
+        result["metrics"] = metrics
+    if reason_code:
+        result["reason_code"] = reason_code
+    if reason:
+        result["reason"] = reason
+    return result
 
 
 class _PythonDecisionVisitor(ast.NodeVisitor):
@@ -448,6 +531,105 @@ def _python_definitions(text: str) -> list[dict[str, Any]]:
     return collector.definitions
 
 
+def _python_function_nodes(text: str) -> dict[str, ast.FunctionDef | ast.AsyncFunctionDef]:
+    module = ast.parse(text)
+    nodes: dict[str, ast.FunctionDef | ast.AsyncFunctionDef] = {}
+
+    class Collector(ast.NodeVisitor):
+        def __init__(self) -> None:
+            self.scope: list[str] = []
+
+        def visit_ClassDef(self, node: ast.ClassDef) -> None:  # noqa: N802
+            self.scope.append(node.name)
+            for statement in node.body:
+                self.visit(statement)
+            self.scope.pop()
+
+        def visit_FunctionDef(self, node: ast.FunctionDef) -> None:  # noqa: N802
+            self._visit_function(node)
+
+        def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> None:  # noqa: N802
+            self._visit_function(node)
+
+        def _visit_function(self, node: ast.FunctionDef | ast.AsyncFunctionDef) -> None:
+            qualified_name = ".".join([*self.scope, node.name])
+            start_line = min([node.lineno, *(decorator.lineno for decorator in node.decorator_list)])
+            nodes[f"python:{qualified_name}:{start_line}"] = node
+            self.scope.append(node.name)
+            for statement in node.body:
+                self.visit(statement)
+            self.scope.pop()
+
+    Collector().visit(module)
+    return nodes
+
+
+def _python_statement_suites(node: ast.AST) -> Iterable[list[ast.stmt]]:
+    for _, value in ast.iter_fields(node):
+        if isinstance(value, list) and value and all(isinstance(item, ast.stmt) for item in value):
+            yield value
+            for statement in value:
+                if not isinstance(statement, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                    yield from _python_statement_suites(statement)
+        elif isinstance(value, ast.AST) and not isinstance(value, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            yield from _python_statement_suites(value)
+
+
+def _python_region_statements(
+    node: ast.FunctionDef | ast.AsyncFunctionDef, start_line: int, end_line: int
+) -> list[ast.stmt] | None:
+    matches: list[list[ast.stmt]] = []
+    for suite in _python_statement_suites(node):
+        start_index = next((index for index, statement in enumerate(suite) if statement.lineno == start_line), None)
+        if start_index is None:
+            continue
+        for end_index in range(start_index, len(suite)):
+            statement = suite[end_index]
+            if (statement.end_lineno or statement.lineno) != end_line:
+                continue
+            region = suite[start_index : end_index + 1]
+            if any(isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)) for item in region):
+                continue
+            matches.append(region)
+    if not matches:
+        return None
+    return min(matches, key=lambda statements: (len(statements), statements[0].lineno))
+
+
+def _python_region_metrics(
+    node: ast.FunctionDef | ast.AsyncFunctionDef, statements: list[ast.stmt]
+) -> dict[str, Any]:
+    decisions = _PythonDecisionVisitor()
+    bindings = _PythonBindingVisitor(node.args)
+    for statement in node.body:
+        bindings.visit(statement)
+    for statement in statements:
+        decisions.visit(statement)
+    local_bindings = bindings.bindings - bindings.globals - bindings.nonlocals
+    live_by_line: dict[int, set[str]] = {}
+    _python_block_liveness(statements, set(), local_bindings, live_by_line)
+    peak_line: int | None = None
+    peak_names: list[str] = []
+    for line, names in sorted(live_by_line.items()):
+        current = sorted(names)
+        if len(current) > len(peak_names):
+            peak_line = line
+            peak_names = current
+    return _metrics(
+        cyclomatic_complexity=1 + len(decisions.points),
+        decision_points=decisions.points,
+        peak_live_bindings=len(peak_names),
+        peak_line=peak_line,
+        peak_names=peak_names,
+        live_method="backward_lexical_liveness_branch_union_region",
+        live_limitations=[
+            "region analysis excludes values needed only after the selected range",
+            "path-insensitive branch union can overapproximate concurrent values",
+            "excludes fields, globals, nonlocals, aliases, and inter-procedural values",
+        ],
+    )
+
+
 _LUA_FUNCTION_DECL = re.compile(
     r"^\s*(?:local\s+)?function\s+([A-Za-z_][A-Za-z0-9_]*(?:[.:][A-Za-z_][A-Za-z0-9_]*)*)\s*\(([^)]*)\)"
 )
@@ -682,6 +864,87 @@ def _lua_metric_definition(
     )
 
 
+def _lua_structural_regions(lines: list[str], definition: dict[str, Any]) -> list[dict[str, Any]]:
+    stack: list[dict[str, Any]] = []
+    regions: list[dict[str, Any]] = []
+    for number in range(definition["start_line"] + 1, definition["end_line"]):
+        code = _strip_lua_comment(lines[number - 1])
+        function_start = _lua_function_start(code)
+        starts_function = function_start is not None
+        stripped = code.strip()
+        opens_block = bool(_lua_block_starts(code, starts_function))
+        closes_block = bool(_LUA_END.search(code) or re.search(r"\b(?:else|elseif|until)\b", code))
+        if stripped and not opens_block and not closes_block:
+            regions.append({"kind": "statement", "start_line": number, "end_line": number})
+        for kind in _lua_block_starts(code, starts_function):
+            stack.append({"kind": kind, "start_line": number})
+        if re.search(r"\buntil\b", code):
+            for index in range(len(stack) - 1, -1, -1):
+                if stack[index]["kind"] == "repeat":
+                    region = stack.pop(index)
+                    regions.append({**region, "end_line": number})
+                    break
+        for _ in _LUA_END.finditer(code):
+            if not stack:
+                break
+            region = stack.pop()
+            if region["kind"] != "function":
+                regions.append({**region, "end_line": number})
+    return regions
+
+
+def _lua_region_metrics(
+    lines: list[str], definition: dict[str, Any], start_line: int, end_line: int
+) -> dict[str, Any]:
+    parameter_match = _lua_function_start(_strip_lua_comment(lines[definition["start_line"] - 1]))
+    parameters = set(parameter_match[1] if parameter_match else [])
+    region_lines = [
+        (number, _strip_lua_comment(lines[number - 1]))
+        for number in range(start_line, end_line + 1)
+    ]
+    points: list[dict[str, Any]] = []
+    bindings = set(parameters)
+    for number, code in region_lines:
+        if re.search(r"\bif\b.*\bthen\b", code):
+            points.append({"kind": "if", "line": number})
+        if re.search(r"\belseif\b.*\bthen\b", code):
+            points.append({"kind": "elseif", "line": number})
+        if re.search(r"\bfor\b.*\bdo\b", code):
+            points.append({"kind": "for", "line": number})
+        if re.search(r"\bwhile\b.*\bdo\b", code):
+            points.append({"kind": "while", "line": number})
+        if re.search(r"\brepeat\b", code):
+            points.append({"kind": "repeat", "line": number})
+        for _ in re.finditer(r"\b(?:and|or)\b", code):
+            points.append({"kind": "boolean_short_circuit", "line": number})
+        bindings.update(_lua_declared_bindings(code))
+
+    live: set[str] = set()
+    peak_line: int | None = None
+    peak_names: list[str] = []
+    for number, code in reversed(region_lines):
+        reads, writes = _lua_line_accesses(code, bindings)
+        live = reads | (live - writes)
+        current = sorted(live)
+        if len(current) > len(peak_names):
+            peak_line = number
+            peak_names = current
+    return _metrics(
+        cyclomatic_complexity=1 + len(points),
+        decision_points=points,
+        peak_live_bindings=len(peak_names),
+        peak_line=peak_line,
+        peak_names=peak_names,
+        live_method="backward_lexical_liveness_direct_region",
+        live_limitations=[
+            "region analysis excludes values needed only after the selected range",
+            "does not model Lua branch or loop control flow",
+            "excludes fields, globals, aliases, and inter-procedural values",
+            "only parses declarations, loop targets, and plain assignments",
+        ],
+    )
+
+
 def _walk_tree_sitter(node: Any) -> Iterable[Any]:
     yield node
     for child in node.children:
@@ -835,6 +1098,94 @@ def _tree_sitter_definitions(
     return definitions, None
 
 
+def _tree_sitter_region_metrics(
+    text: str,
+    language: str,
+    path: str,
+    profile: dict[str, Any],
+    definition: dict[str, Any],
+    start_line: int,
+    end_line: int,
+) -> dict[str, Any] | None:
+    try:
+        from tree_sitter import Language, Parser
+
+        grammar = importlib.import_module(profile["grammar_module"])
+        grammar_symbol = profile.get("grammar_symbol_by_extension", {}).get(
+            Path(path).suffix.lower(), profile.get("grammar_symbol", "language")
+        )
+        parser_language = Language(getattr(grammar, grammar_symbol)())
+        try:
+            parser = Parser(parser_language)
+        except TypeError:
+            parser = Parser()
+            parser.language = parser_language
+        source = text.encode("utf-8")
+        tree = parser.parse(source)
+    except Exception:
+        return None
+
+    definition_types = set(profile["definition_nodes"])
+    region_types = set(profile.get("region_nodes", []))
+    owner = next(
+        (
+            node
+            for node in _walk_tree_sitter(tree.root_node)
+            if node.type == definition["kind"]
+            and node.start_point[0] + 1 == definition["start_line"]
+            and node.end_point[0] + 1 == definition["end_line"]
+        ),
+        None,
+    )
+    if owner is None:
+        return None
+
+    def walk_region_nodes(node: Any) -> Iterable[Any]:
+        for child in node.children:
+            if child.type in definition_types:
+                continue
+            yield child
+            yield from walk_region_nodes(child)
+
+    candidates = [
+        node
+        for node in walk_region_nodes(owner)
+        if node.type in region_types
+        and node.start_point[0] + 1 == start_line
+        and node.end_point[0] + 1 == end_line
+    ]
+    if not candidates:
+        return None
+    region = min(candidates, key=lambda node: (node.end_byte - node.start_byte, node.start_byte))
+    decision_types = set(profile["decision_nodes"])
+    decisions: list[dict[str, Any]] = []
+    for candidate in _tree_sitter_direct_nodes(region, definition_types):
+        if candidate.type not in decision_types:
+            continue
+        if candidate.type == "binary_expression":
+            count = len(re.findall(r"&&|\|\|", _tree_sitter_node_text(candidate, source)))
+            for _ in range(count):
+                decisions.append({"kind": "boolean_short_circuit", "line": candidate.start_point[0] + 1})
+        else:
+            decisions.append({"kind": candidate.type, "line": candidate.start_point[0] + 1})
+    bindings = _tree_sitter_bindings(owner, source, set(profile["binding_nodes"]), definition_types)
+    peak_count, peak_line, peak_names = _tree_sitter_peak_liveness(region, source, bindings)
+    return _metrics(
+        cyclomatic_complexity=1 + len(decisions),
+        decision_points=decisions,
+        peak_live_bindings=peak_count,
+        peak_line=peak_line,
+        peak_names=peak_names,
+        live_method="backward_token_liveness_profiled_bindings_region",
+        live_limitations=[
+            "region analysis excludes values needed only after the selected range",
+            "path-insensitive token liveness can overapproximate concurrent values",
+            "binding extraction is grammar-profile based",
+            "excludes fields, globals, aliases, and inter-procedural values",
+        ],
+    )
+
+
 def analyze_text(text: str, language: str | None = None, path: str | Path = "<memory>") -> dict[str, Any]:
     """Analyze source text and return a ``code-reader-static-metrics/v1`` document.
 
@@ -915,6 +1266,124 @@ def analyze_text(text: str, language: str | None = None, path: str | Path = "<me
     )
 
 
+def analyze_range_text(
+    text: str,
+    language: str | None,
+    path: str | Path,
+    start_line: int,
+    end_line: int | None = None,
+) -> dict[str, Any]:
+    """Analyze a whole definition or a complete structural subregion.
+
+    The function never substitutes an enclosing definition's metrics for a
+    non-structural partial selection. Callers use ``fallback_required`` to
+    request the semantic reviewer when static analysis cannot establish the
+    region safely.
+    """
+    end_line = start_line if end_line is None else end_line
+    analysis = analyze_text(text, language=language, path=path)
+    if analysis.get("status") != SUPPORTED:
+        reason_code = "PARSE_ERROR" if analysis.get("status") == PARSE_ERROR else "ANALYZER_UNAVAILABLE"
+        return _range_result(
+            analysis,
+            start_line,
+            end_line,
+            status=analysis.get("status", NOT_AVAILABLE),
+            reason_code=reason_code,
+            reason=analysis.get("reason", "static analysis is unavailable"),
+        )
+    definition = select_definition_for_range(analysis, start_line, end_line)
+    if not definition:
+        return _range_result(
+            analysis,
+            start_line,
+            end_line,
+            status=NOT_AVAILABLE,
+            reason_code="DEFINITION_NOT_FOUND",
+            reason="source range is not fully contained in a single supported definition",
+        )
+    region_range = _trim_non_code_range(text, start_line, end_line)
+    if region_range is None:
+        return _range_result(
+            analysis,
+            start_line,
+            end_line,
+            status=NOT_AVAILABLE,
+            definition=definition,
+            reason_code="NON_SESE_RANGE",
+            reason="source range has no executable structural region",
+        )
+    region_start, region_end = region_range
+    if region_start == definition["start_line"] and region_end == definition["end_line"]:
+        return _range_result(
+            analysis,
+            start_line,
+            end_line,
+            status=SUPPORTED,
+            definition=definition,
+            metrics=definition["metrics"],
+            analysis_region={
+                "kind": "definition",
+                "name": definition["name"],
+                "path": str(path),
+                "start_line": definition["start_line"],
+                "end_line": definition["end_line"],
+                "definition": _definition_identity(definition),
+            },
+        )
+
+    normalized_language = analysis.get("language")
+    metrics: dict[str, Any] | None = None
+    if normalized_language == "python":
+        node = _python_function_nodes(text).get(definition["id"])
+        statements = _python_region_statements(node, region_start, region_end) if node else None
+        if statements and node:
+            metrics = _python_region_metrics(node, statements)
+    elif normalized_language == "lua":
+        lines = text.replace("\r\n", "\n").replace("\r", "\n").split("\n")
+        owner = {
+            "start_line": definition["start_line"],
+            "end_line": definition["end_line"],
+        }
+        if any(
+            region["start_line"] == region_start and region["end_line"] == region_end
+            for region in _lua_structural_regions(lines, owner)
+        ):
+            metrics = _lua_region_metrics(lines, owner, region_start, region_end)
+    else:
+        profile = load_profiles().get(normalized_language or "")
+        if profile and profile.get("backend") == "tree-sitter-v1":
+            metrics = _tree_sitter_region_metrics(
+                text, normalized_language or "unknown", str(path), profile, definition, region_start, region_end
+            )
+    if metrics is None:
+        return _range_result(
+            analysis,
+            start_line,
+            end_line,
+            status=NOT_AVAILABLE,
+            definition=definition,
+            reason_code="NON_SESE_RANGE",
+            reason="source range does not match a complete structural subregion",
+        )
+    return _range_result(
+        analysis,
+        start_line,
+        end_line,
+        status=SUPPORTED,
+        definition=definition,
+        metrics=metrics,
+        analysis_region={
+            "kind": "sese_region",
+            "name": f"{definition['name']}:L{region_start}-L{region_end}",
+            "path": str(path),
+            "start_line": region_start,
+            "end_line": region_end,
+            "definition": _definition_identity(definition),
+        },
+    )
+
+
 def analyze_path(path: str | Path, language: str | None = None) -> dict[str, Any]:
     """Read a UTF-8 source file and delegate to :func:`analyze_text`."""
     source_path = Path(path)
@@ -979,11 +1448,20 @@ def main(argv: list[str] | None = None) -> int:
         result = analyze_text(arguments.text, language=arguments.language, path=arguments.virtual_path)
     if arguments.source_range:
         start, end = arguments.source_range
+        source_text = Path(arguments.path).read_text(encoding="utf-8") if arguments.path else arguments.text
+        range_analysis = analyze_range_text(
+            source_text,
+            arguments.language,
+            arguments.path or arguments.virtual_path,
+            start,
+            end,
+        )
         result["selection"] = {
             "start_line": start,
             "end_line": end,
             "definition": select_definition_for_range(result, start, end),
         }
+        result["range_analysis"] = range_analysis
     json.dump(result, sys.stdout, ensure_ascii=False, indent=2, sort_keys=True)
     sys.stdout.write("\n")
     return 0
