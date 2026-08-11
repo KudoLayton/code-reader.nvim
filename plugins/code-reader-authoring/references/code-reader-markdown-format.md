@@ -61,6 +61,8 @@ Every concrete page has a metadata preamble immediately after its opening headin
   - `Diff: path#Hn@old:L10-L18`
   - `Diff: path#Hn@new:L20-L40`
   - `@a` means old/before and `@b` means new/after.
+- A side modifier declares the page's primary explanation target: use `@new` for post-change behavior and `@old` for removed or replaced pre-change behavior. Do not choose a side merely to make the displayed range smaller.
+- When the page's central purpose is to compare the two versions rather than walk through one version, omit the side modifier (`Diff: path#Hn`) and describe the comparison explicitly.
 - To include hunk-adjacent lines, prefer explicit hunk-relative bounds:
   - `Diff: path#Hn@new:L(-1)-L(+2)` means from one line before the new-side hunk start through two lines after the new-side hunk end.
   - `Diff: path#Hn@old:L(-1)-L22` mixes a relative start with an absolute end line.
@@ -108,6 +110,7 @@ pages:
       - text: "Input normalization"
         classification: conceptual # conceptual | scope_expanding
         counterfactual: "Removing this section would not narrow the Source range."
+    focus_alignment: null # Required for Diff pages only.
     metrics:
       static:
         cyclomatic_complexity: 4
@@ -139,6 +142,37 @@ For every page, apply the following measurement procedure and record evidence in
 2. Evaluate every H2+ heading by removing that heading and its explanation hypothetically. If doing so allows the page's Source or resolved Diff scope to become smaller, classify it as `scope_expanding` and require a new `---` page. Headings that explain the same range's input, output, invariant, or control order are `conceptual`.
 3. An unresolved Diff uses `hunk_fallback`: inspect the hunk body, context, and header only. If these do not establish one definition with sufficient confidence, return `CHANGES_REQUIRED`, never PASS.
 
+### Diff focus-side alignment
+
+For every Diff page, add this field to the page report:
+
+```yaml
+focus_alignment:
+  declared_side: new # old | new | none
+  described_side: new # old | new | comparison | undetermined
+  evidence:
+    - "The page walks through the newly added guard and its return value."
+    - "The `@new` range contains the guard discussed in the central claim."
+  verdict: MATCH # MATCH | MISMATCH | INSUFFICIENT_EVIDENCE
+```
+
+Determine `described_side` from the page's central explanatory claims, not from incidental comparison text. A page can mention the other version as context while still describing `new` or `old` as its primary target.
+
+- `@new` matches only when the central walkthrough explains the post-change code, behavior, or state.
+- `@old` matches only when the central walkthrough explains removed or replaced pre-change code or behavior.
+- `none` matches only when the central walkthrough is a balanced old/new comparison. If a page is actually centered on one side, it must use that side's modifier instead.
+- If focused references on one page declare conflicting sides, or the prose does not establish a primary target, return `INSUFFICIENT_EVIDENCE` rather than guessing. Split the page or make the comparison explicit with an unmodified hunk reference.
+
+Set `MISMATCH` when `@old` is used to support a new-side walkthrough, `@new` is used to support an old-side walkthrough, or a side modifier is used for a genuinely comparative page. Set `INSUFFICIENT_EVIDENCE` when the central claim cannot be identified or the focused range does not contain the code needed to support it. Either result requires `CHANGES_REQUIRED`: change the modifier, clarify the prose, or split the page. This check is semantic review; it does not replace source-resolution or definition-boundary checks.
+
+Review acceptance examples:
+
+- A page centered on a newly added guard uses `@new` and may briefly contrast the old path: `MATCH`.
+- A page explains the removed retry loop with `@old`: `MATCH`.
+- A page explains a before/after behavioral difference with an unmodified `Diff: path#Hn`: `MATCH`.
+- A page explains the new guard but declares `@old`: `MISMATCH` and `CHANGES_REQUIRED`.
+- A page contains both sides but never states whether it explains a new behavior, old behavior, or comparison: `INSUFFICIENT_EVIDENCE` and `CHANGES_REQUIRED`.
+
 ### Independent concepts
 
 Count one concept for each separate responsibility with its own answer to “what or why must the reader understand?” Record its name, code evidence, and why it is separate. Typical concepts include validation, state creation or mutation, transformation algorithm, branch policy, error/retry policy, I/O or persistence, protocol/integration, and concurrency/lifecycle.
@@ -163,7 +197,7 @@ At each cognitively demanding execution point--immediately before a branch, outp
 - `V(G) >= 12`, independent concepts `>= 6`, or variable--value pairs `>= 9`.
 - At least two normal violations: `V(G) >= 11`, independent concepts `>= 5`, and variable--value pairs `>= 8`.
 
-For a resolved Diff, use the more demanding old/new measurement. For `hunk_fallback`, count only supported lower bounds; if a lower bound triggers a rule, require a split. If the reviewer cannot determine a safe definition boundary or cognitive load, return `CHANGES_REQUIRED`. The writing agent fixes every non-PASS page, then re-runs the static validator and a fresh Page Scope Review until the report is `overall_verdict: PASS`.
+For a resolved Diff, use the more demanding old/new measurement. For `hunk_fallback`, count only supported lower bounds; if a lower bound triggers a rule, require a split. A Diff `focus_alignment` verdict other than `MATCH`, an unknown safe definition boundary, or an unknown cognitive load requires `CHANGES_REQUIRED`. The writing agent fixes every non-PASS page, then re-runs the static validator and a fresh Page Scope Review until the report is `overall_verdict: PASS`.
 
 For diff documents, the report must also include a `hunk_coverage` table and list uncovered hunks. All hunks remain required unless the user explicitly requested a partial explanation.
 
