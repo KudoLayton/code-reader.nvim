@@ -1,7 +1,7 @@
 {
   "name": "code-reader-authoring",
-  "version": "0.2.1+codex.20260805141835",
-  "description": "Author Code Reader walkthrough and diff explanation markdown.",
+  "version": "0.2.1+codex.20260811122358",
+  "description": "Author Code Reader walkthrough markdown and render it as formatted PDF.",
   "author": {
     "name": "KudoLayton",
     "email": "lhslhg@gmail.com"
@@ -10,14 +10,15 @@
   "skills": "./skills/",
   "interface": {
     "displayName": "Code Reader Authoring",
-    "shortDescription": "Write Code Reader explanation markdown.",
-    "longDescription": "Code Reader Authoring helps Codex create and validate code walkthrough and diff explanation markdown for code-reader.nvim.",
+    "shortDescription": "Author and export Code Reader walkthroughs.",
+    "longDescription": "Code Reader Authoring helps Codex create, validate, and export code walkthrough and diff explanation markdown for code-reader.nvim.",
     "developerName": "KudoLayton",
     "category": "Productivity",
     "capabilities": [
       "Write",
-      "Validate"
+      "Validate",
+      "Generate"
     ],
-    "defaultPrompt": "Use Code Reader Authoring to explain this feature or diff."
+    "defaultPrompt": "Use Code Reader Authoring to explain this feature, diff, or export a walkthrough as PDF."
   }
 }
