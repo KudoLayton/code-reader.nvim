@@ -184,3 +184,52 @@ test("generates a side-by-side Diff PDF", async () => {
     await rm(temporaryDirectory, { recursive: true, force: true });
   }
 });
+
+test("generates a screen-layout code page without wrapping a long source line", async () => {
+  const temporaryDirectory = await mkdtemp(path.join(os.tmpdir(), "code-reader-screen-pdf-"));
+  const markdownPath = path.join(temporaryDirectory, "walkthrough.md");
+  const sourcePath = path.join(temporaryDirectory, "wide.lua");
+  const output = path.join(temporaryDirectory, "walkthrough.pdf");
+  const longLine = `local request_path = \"/${"segment/".repeat(120)}resource\"`;
+
+  await writeFile(sourcePath, `${longLine}\n`, "utf8");
+  await writeFile(
+    markdownPath,
+    [
+      "---",
+      "type: code-reader",
+      "version: 1",
+      "---",
+      "",
+      "<!-- code-reader: front-page -->",
+      "# Overview",
+      "",
+      "---",
+      "# Wide source",
+      "",
+      "Source: `wide.lua#L1`",
+    ].join("\n"),
+    "utf8",
+  );
+
+  try {
+    const document = parseCodeReaderDocument(await readFile(markdownPath, "utf8"), { markdownPath });
+    const html = await renderCodeReaderHtml(document, {
+      root: temporaryDirectory,
+      padding: 5,
+      layout: "screen",
+    });
+
+    assert.match(html, /pdf-layout--screen/);
+    assert.match(html, /data-screen-page=/);
+    assert.match(html, /white-space: pre;/);
+    await writePdfFromHtml(html, output, await findBrowserExecutable());
+    const pdf = await PDFDocument.load(await readFile(output));
+    const dimensions = pdf.getPages().map((page) => page.getSize());
+
+    assert.equal(pdf.getPageCount(), 3);
+    assert.equal(dimensions.some((size) => size.width > 842), true);
+  } finally {
+    await rm(temporaryDirectory, { recursive: true, force: true });
+  }
+});

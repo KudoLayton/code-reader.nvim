@@ -138,21 +138,32 @@ async function renderCodeRows(rows, filePath) {
     .join("\n");
 }
 
-async function renderSourceSection(reference, sourceLines, padding) {
+function screenPageAttributes(screenPageName) {
+  if (!screenPageName) {
+    return "";
+  }
+  return ` data-screen-page="${screenPageName}" style="page: ${screenPageName}"`;
+}
+
+function screenContentAttributes(screenPageName) {
+  return screenPageName ? " data-screen-content" : "";
+}
+
+async function renderSourceSection(reference, sourceLines, padding, screenPageName) {
   const snippet = buildSourceSnippet(sourceLines, reference, padding);
   const rows = await renderCodeRows(snippet.lines, reference.path);
   return [
-    '<section class="pdf-section pdf-section--code">',
+    `<section class="pdf-section pdf-section--code"${screenPageAttributes(screenPageName)}>`,
     '<header class="code-header">',
     `<span>Source</span><strong>${escapeHtml(reference.path)}</strong>`,
     `<span>L${reference.startLine}-L${reference.endLine}</span>`,
     "</header>",
-    `<div class="code-block">${rows}</div>`,
+    `<div class="code-block"${screenContentAttributes(screenPageName)}>${rows}</div>`,
     "</section>",
   ].join("\n");
 }
 
-async function renderDiffSection(reference, hunk, analysis, padding) {
+async function renderDiffSection(reference, hunk, analysis, padding, screenPageName) {
   const snippet = renderDiffSnippet(hunk, {
     beforeLines: analysis.beforeLines,
     afterLines: analysis.afterLines,
@@ -166,12 +177,12 @@ async function renderDiffSection(reference, hunk, analysis, padding) {
     renderDiffRows(afterRows, reference.path),
   ]);
   return [
-    '<section class="pdf-section pdf-section--code">',
+    `<section class="pdf-section pdf-section--code"${screenPageAttributes(screenPageName)}>`,
     '<header class="code-header">',
     `<span>Diff ${escapeHtml(reference.hunkId)}</span><strong>${escapeHtml(reference.path)}</strong>`,
     `<span>${escapeHtml(analysis.status)}</span>`,
     "</header>",
-    '<div class="diff-grid">',
+    `<div class="diff-grid"${screenContentAttributes(screenPageName)}>`,
     `<section><h2>Before</h2><div class="code-block">${before}</div></section>`,
     `<section><h2>After</h2><div class="code-block">${after}</div></section>`,
     "</div>",
@@ -255,8 +266,14 @@ async function analyzeFile(root, file) {
 export async function renderCodeReaderHtml(document, options) {
   const root = path.resolve(options.root);
   const padding = options.padding;
+  const layout = options.layout ?? "print";
+  if (!["print", "screen"].includes(layout)) {
+    throw new Error(`Unknown PDF layout: ${layout}`);
+  }
   const sections = [];
+  let screenPageCount = 0;
   const diffModel = document.type === "code-reader-diff" ? await loadDiffModel(document) : undefined;
+  const nextScreenPageName = () => (layout === "screen" ? `code-screen-${++screenPageCount}` : undefined);
 
   for (let index = 0; index < document.steps.length; index += 1) {
     const step = document.steps[index];
@@ -269,7 +286,7 @@ export async function renderCodeReaderHtml(document, options) {
 
     if (document.type === "code-reader") {
       for (const reference of step.sources) {
-        sections.push(await renderSourceSection(reference, await loadSourceLines(root, reference), padding));
+        sections.push(await renderSourceSection(reference, await loadSourceLines(root, reference), padding, nextScreenPageName()));
       }
       continue;
     }
@@ -280,7 +297,7 @@ export async function renderCodeReaderHtml(document, options) {
       if (!hunk) {
         throw new Error(`Cannot find ${reference.path}#${reference.hunkId} in the referenced diff.`);
       }
-      sections.push(await renderDiffSection(reference, hunk, await analyzeFile(root, file), padding));
+      sections.push(await renderDiffSection(reference, hunk, await analyzeFile(root, file), padding, nextScreenPageName()));
     }
   }
 
@@ -324,9 +341,15 @@ h1 { color: #0f172a; font-size: 24pt; line-height: 1.25; margin: 8mm 0 7mm; }
 .code-line--deleted { background: #3f1f24 !important; }
 .code-line--added { background: #1f3a2b !important; }
 .code-line--modified { background: #3a3420 !important; }
+.pdf-layout--screen .pdf-section--code { break-inside: avoid-page; }
+.pdf-layout--screen .code-block { display: inline-block; min-width: 100%; width: max-content; }
+.pdf-layout--screen .code-line { grid-template-columns: 14mm 5mm max-content; width: max-content; }
+.pdf-layout--screen .code-line code { min-width: max-content; overflow-wrap: normal; white-space: pre; }
+.pdf-layout--screen .diff-grid { display: inline-grid; grid-template-columns: max-content max-content; width: max-content; }
+.pdf-layout--screen .diff-grid > section { width: max-content; }
 </style>
 </head>
-<body>
+<body class="pdf-layout--${layout}">
 ${sections.join("\n")}
 </body>
 </html>`;

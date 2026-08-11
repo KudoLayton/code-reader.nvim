@@ -6,6 +6,10 @@ import path from "node:path";
 import puppeteer from "puppeteer-core";
 
 const require = createRequire(import.meta.url);
+const screenPageHeight = 794;
+const screenPageMargin = 45;
+const minimumScreenPageWidth = 1122;
+const maximumPdfPageDimension = 19_000;
 
 async function existingPath(candidate) {
   if (!candidate) {
@@ -45,6 +49,42 @@ export async function findBrowserExecutable(explicitPath) {
   throw new Error("Chrome or Microsoft Edge was not found. Install one or pass --browser <path>.");
 }
 
+export async function sizeScreenPages(page) {
+  const measurements = await page.evaluate(() => {
+    if (!document.body.classList.contains("pdf-layout--screen")) {
+      return [];
+    }
+    return [...document.querySelectorAll("[data-screen-page]")].map((section) => {
+      const content = section.querySelector("[data-screen-content]");
+      if (!content) {
+        throw new Error(`Missing screen content for ${section.dataset.screenPage}.`);
+      }
+      return {
+        name: section.dataset.screenPage,
+        contentWidth: Math.ceil(Math.max(content.scrollWidth, content.getBoundingClientRect().width)),
+      };
+    });
+  });
+
+  if (!measurements.length) {
+    return [];
+  }
+
+  const pages = measurements.map(({ name, contentWidth }) => {
+    const width = Math.max(minimumScreenPageWidth, contentWidth + screenPageMargin * 2);
+    if (width > maximumPdfPageDimension) {
+      throw new Error(`Screen layout for ${name} requires a page wider than Chromium's PDF limit. Use --layout print or reduce the longest code line.`);
+    }
+    return { name, width };
+  });
+  const rules = pages
+    .map(({ name, width }) => `@page ${name} { size: ${width}px ${screenPageHeight}px; margin: ${screenPageMargin}px; }`)
+    .join("\n");
+  await page.addStyleTag({ content: rules });
+  await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(resolve)));
+  return pages;
+}
+
 export async function writePdfFromHtml(html, outputPath, browserPath) {
   const browser = await puppeteer.launch({
     executablePath: browserPath,
@@ -71,6 +111,8 @@ export async function writePdfFromHtml(html, outputPath, browserPath) {
     stage = "wait for fonts";
     await page.bringToFront();
     await page.evaluate(() => document.fonts.ready);
+    stage = "size screen code pages";
+    result.screenPages = await sizeScreenPages(page);
     stage = "generate PDF";
 
     const pdf = await page.pdf({
