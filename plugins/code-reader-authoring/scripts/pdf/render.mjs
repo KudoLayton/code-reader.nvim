@@ -15,7 +15,7 @@ import {
   renderDiffSnippet,
   resolveReferenceRange,
 } from "./document.mjs";
-import { findTargetDefinitions, formatTargetDefinition } from "./targets.mjs";
+import { resolveTargetDefinitions } from "./static-targets.mjs";
 
 const filetypeByExtension = {
   c: "c",
@@ -181,7 +181,8 @@ function renderTargetDefinition(targets) {
   if (!targets?.length) {
     return "";
   }
-  return `<strong class="target-definition">${escapeHtml(targets.map(formatTargetDefinition).join(" · "))}</strong>`;
+  const labels = targets.map((target) => `${target.kind === "function" ? "Function" : "Type"}: ${target.name}`);
+  return `<strong class="target-definition">${escapeHtml(labels.join(" · "))}</strong>`;
 }
 
 async function renderSourceSection(reference, sourceLines, padding, screenPageName, targets) {
@@ -300,11 +301,13 @@ async function analyzeFile(root, file) {
   }
 }
 
-function sourceTargetDefinitions(step, reference, sourceLines) {
-  return step.target ? [step.target] : findTargetDefinitions(sourceLines, reference.path, reference.startLine, reference.endLine);
+async function sourceTargetDefinitions(step, reference, sourceLines) {
+  return step.target
+    ? [step.target]
+    : resolveTargetDefinitions(sourceLines, reference.path, reference.startLine, reference.endLine);
 }
 
-function diffTargetDefinitions(step, reference, hunk, analysis) {
+async function diffTargetDefinitions(step, reference, hunk, analysis) {
   if (step.target) {
     return [step.target];
   }
@@ -316,7 +319,7 @@ function diffTargetDefinitions(step, reference, hunk, analysis) {
       : undefined;
     const startLine = focusedRange?.startLine ?? (side === "old" ? hunk.oldStart : hunk.newStart);
     const endLine = focusedRange?.endLine ?? (side === "old" ? hunk.oldEnd : hunk.newEnd);
-    const targets = findTargetDefinitions(lines, reference.path, startLine, endLine);
+    const targets = await resolveTargetDefinitions(lines, reference.path, startLine, endLine);
     if (targets.length > 0) {
       return targets;
     }
@@ -348,7 +351,7 @@ export async function renderCodeReaderHtml(document, options) {
     if (document.type === "code-reader") {
       const sourcePages = await Promise.all(step.sources.map(async (reference) => {
         const sourceLines = await loadSourceLines(root, reference);
-        return { reference, sourceLines, targets: sourceTargetDefinitions(step, reference, sourceLines) };
+        return { reference, sourceLines, targets: await sourceTargetDefinitions(step, reference, sourceLines) };
       }));
       sections.push(
         renderExplanationSection(
@@ -381,7 +384,7 @@ export async function renderCodeReaderHtml(document, options) {
         throw new Error(`Cannot find ${reference.path}#${reference.hunkId} in the referenced diff.`);
       }
       const analysis = await analyzeFile(root, file);
-      diffPages.push({ reference, hunk, analysis, targets: diffTargetDefinitions(step, reference, hunk, analysis) });
+      diffPages.push({ reference, hunk, analysis, targets: await diffTargetDefinitions(step, reference, hunk, analysis) });
     }
     sections.push(
       renderExplanationSection(

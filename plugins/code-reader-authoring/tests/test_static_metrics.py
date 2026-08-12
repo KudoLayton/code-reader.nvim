@@ -6,6 +6,7 @@ import json
 import subprocess
 import sys
 import unittest
+from unittest.mock import patch
 from pathlib import Path
 
 
@@ -13,6 +14,7 @@ SCRIPTS = Path(__file__).resolve().parents[1] / "scripts"
 sys.path.insert(0, str(SCRIPTS))
 
 import static_metrics  # noqa: E402
+import resolve_target_definitions  # noqa: E402
 
 
 class StaticMetricsTest(unittest.TestCase):
@@ -172,6 +174,12 @@ end
             if profile["backend"] == "tree-sitter-v1":
                 self.assertTrue(profile.get("region_nodes"), language)
 
+    def test_tree_sitter_profiles_define_function_and_type_target_nodes(self) -> None:
+        for language, profile in static_metrics.load_profiles().items():
+            if profile["backend"] == "tree-sitter-v1":
+                self.assertTrue(profile.get("target_definition_nodes", {}).get("function"), language)
+                self.assertTrue(profile.get("target_definition_nodes", {}).get("type"), language)
+
     def test_registered_language_requires_its_pinned_parser(self) -> None:
         result = static_metrics.analyze_text("function value() {}", "typescript", "value.ts")
 
@@ -184,6 +192,100 @@ end
         result = static_metrics.analyze_text("def broken(:\n", "python", "broken.py")
 
         self.assertEqual(result["status"], static_metrics.PARSE_ERROR)
+        self.assertEqual(result["definitions"], [])
+
+    def test_python_target_definitions_include_classes_functions_and_type_aliases(self) -> None:
+        source = """\
+from typing import TypeAlias
+
+RequestId: TypeAlias = str
+
+class Request:
+    def send(self) -> None:
+        pass
+"""
+        result = static_metrics.analyze_target_definitions(source, "python", "request.py")
+
+        self.assertEqual(result["status"], static_metrics.SUPPORTED)
+        self.assertEqual(
+            [(item["kind"], item["qualified_name"]) for item in result["definitions"]],
+            [("type", "RequestId"), ("type", "Request"), ("function", "Request.send")],
+        )
+        self.assertEqual(
+            static_metrics.select_target_definitions_for_range(result, 5, 7),
+            [
+                {
+                    "name": "Request",
+                    "qualified_name": "Request",
+                    "kind": "type",
+                    "start_line": 5,
+                    "end_line": 7,
+                },
+                {
+                    "name": "send",
+                    "qualified_name": "Request.send",
+                    "kind": "function",
+                    "start_line": 6,
+                    "end_line": 7,
+                },
+            ],
+        )
+
+    def test_target_range_inside_nested_definition_selects_the_innermost_one(self) -> None:
+        source = """\
+class Request:
+    def send(self) -> None:
+        return None
+"""
+        result = static_metrics.analyze_target_definitions(source, "python", "request.py")
+
+        self.assertEqual(
+            static_metrics.select_target_definitions_for_range(result, 3, 3),
+            [
+                {
+                    "name": "send",
+                    "qualified_name": "Request.send",
+                    "kind": "function",
+                    "start_line": 2,
+                    "end_line": 3,
+                }
+            ],
+        )
+
+    def test_target_definition_resolver_reads_source_from_standard_input(self) -> None:
+        resolver = SCRIPTS / "resolve_target_definitions.py"
+        completed = subprocess.run(
+            [sys.executable, str(resolver), "--path", "request.py", "--range", "L1-L2"],
+            input="def send_request():\n    return True\n",
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        result = json.loads(completed.stdout)
+
+        self.assertEqual(result["status"], static_metrics.SUPPORTED)
+        self.assertEqual(
+            result["definitions"],
+            [
+                {
+                    "name": "send_request",
+                    "qualified_name": "send_request",
+                    "kind": "function",
+                    "start_line": 1,
+                    "end_line": 2,
+                }
+            ],
+        )
+
+    def test_target_definition_resolver_omits_labels_when_bootstrap_fails(self) -> None:
+        with patch.object(
+            resolve_target_definitions.bootstrap_static_analysis,
+            "ensure",
+            side_effect=PermissionError("cache denied"),
+        ):
+            result = resolve_target_definitions.resolve("interface RequestOptions {}", "request.ts", 1, 1)
+
+        self.assertEqual(result["status"], static_metrics.NOT_AVAILABLE)
         self.assertEqual(result["definitions"], [])
 
     def test_cli_returns_selection_in_json(self) -> None:

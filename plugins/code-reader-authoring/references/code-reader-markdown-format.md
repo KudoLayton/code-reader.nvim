@@ -34,7 +34,7 @@ Every concrete page has a metadata preamble immediately after its opening headin
 
 - A `type: code-reader` page has exactly one continuous `Source:` reference in that preamble. Its optional `Cursor:` reference must name the same path and stay inside that Source range.
 - A `type: code-reader-diff` page has exactly one `Diff:` reference in that preamble. An unmodified hunk reference may compare old and new code, while a side-specific reference narrows the page to one old or new range. Explain another hunk or range on a separate page.
-- Optionally add one `Target: function <name>` or `Target: type <name>` line to override the target-definition label in both the explanation and its code page. Use it only when automatic detection is unavailable or selects the wrong declaration.
+- Optionally add one `Target: function <name>` or `Target: type <name>` line to override the AST-derived target-definition label in both the explanation and its code page. Use it only when automatic detection is unavailable or selects the wrong declaration.
 - A page must not contain an additional `Source:` or `Diff:` reference after the preamble, and a document type must not use the other reference kind.
 - A page may explain a function, method, type, class, named declaration, or one top-level declaration or statement. It must not combine sibling definitions, multiple class members, or multiple top-level statements. A class container page is allowed only for its declaration or contract, not to explain several members.
 
@@ -42,9 +42,9 @@ Every concrete page has a metadata preamble immediately after its opening headin
 
 The PDF renderer labels each concrete explanation page and its matching Source or Diff code page with the target function or type definition.
 
-- For a Source page, it finds definitions that contain the Source range. If the range starts across several declarations, it lists every affected function or type definition.
-- For a Diff page, `@new` selects the after-side target and `@old` selects the before-side target. A comparison without a side prefers the after-side target, then falls back to the before-side target.
-- Detection is best-effort for supported declaration forms. If no definition can be resolved, omit the label; do not invent a range label.
+- For a Source page, it parses the referenced source with the registered AST adapter. If the range starts across several declarations, it lists every affected function or type definition; when it lies inside nested definitions, it shows the innermost one.
+- For a Diff page, it parses the resolved before/after source reconstructed from the patch: `@new` selects after, `@old` selects before, and a comparison without a side prefers after then before. A focused reference uses its focused range rather than the full hunk.
+- Tree-sitter parsers are prepared automatically from the registered lock into the user cache when first needed. If source resolution, parser preparation, or AST parsing fails, omit the label; do not invent a range label or fail PDF generation.
 - `Target:` is a manual override. Keep its name as it appears in code, and do not use it merely to repeat a definition that the renderer can already identify.
 
 ## Code Explanation

@@ -531,6 +531,116 @@ def _python_definitions(text: str) -> list[dict[str, Any]]:
     return collector.definitions
 
 
+def _target_definition(
+    *, name: str, qualified_name: str, kind: str, start_line: int, end_line: int
+) -> dict[str, Any]:
+    return {
+        "name": name,
+        "qualified_name": qualified_name,
+        "kind": kind,
+        "start_line": start_line,
+        "end_line": end_line,
+    }
+
+
+def _python_start_line(node: ast.AST) -> int:
+    decorators = getattr(node, "decorator_list", [])
+    return min([node.lineno, *(decorator.lineno for decorator in decorators)])
+
+
+def _python_type_alias_name(node: ast.AST) -> str | None:
+    if isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
+        annotation = node.annotation
+        if isinstance(annotation, ast.Name) and annotation.id == "TypeAlias":
+            return node.target.id
+        if isinstance(annotation, ast.Attribute) and annotation.attr == "TypeAlias":
+            return node.target.id
+    if node.__class__.__name__ == "TypeAlias":
+        name = getattr(node, "name", None)
+        if isinstance(name, ast.Name):
+            return name.id
+    return None
+
+
+class _PythonTargetDefinitionVisitor(ast.NodeVisitor):
+    def __init__(self) -> None:
+        self.scope: list[str] = []
+        self.definitions: list[dict[str, Any]] = []
+
+    def visit_ClassDef(self, node: ast.ClassDef) -> None:  # noqa: N802
+        qualified_name = ".".join([*self.scope, node.name])
+        self.definitions.append(
+            _target_definition(
+                name=node.name,
+                qualified_name=qualified_name,
+                kind="type",
+                start_line=_python_start_line(node),
+                end_line=node.end_lineno or node.lineno,
+            )
+        )
+        self.scope.append(node.name)
+        for statement in node.body:
+            self.visit(statement)
+        self.scope.pop()
+
+    def visit_FunctionDef(self, node: ast.FunctionDef) -> None:  # noqa: N802
+        self._visit_function(node)
+
+    def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> None:  # noqa: N802
+        self._visit_function(node)
+
+    def _visit_function(self, node: ast.FunctionDef | ast.AsyncFunctionDef) -> None:
+        qualified_name = ".".join([*self.scope, node.name])
+        self.definitions.append(
+            _target_definition(
+                name=node.name,
+                qualified_name=qualified_name,
+                kind="function",
+                start_line=_python_start_line(node),
+                end_line=node.end_lineno or node.lineno,
+            )
+        )
+        self.scope.append(node.name)
+        for statement in node.body:
+            self.visit(statement)
+        self.scope.pop()
+
+    def visit_AnnAssign(self, node: ast.AnnAssign) -> None:  # noqa: N802
+        name = _python_type_alias_name(node)
+        if name:
+            qualified_name = ".".join([*self.scope, name])
+            self.definitions.append(
+                _target_definition(
+                    name=name,
+                    qualified_name=qualified_name,
+                    kind="type",
+                    start_line=node.lineno,
+                    end_line=node.end_lineno or node.lineno,
+                )
+            )
+
+    def visit_TypeAlias(self, node: ast.AST) -> None:  # noqa: N802
+        name = _python_type_alias_name(node)
+        if name:
+            qualified_name = ".".join([*self.scope, name])
+            self.definitions.append(
+                _target_definition(
+                    name=name,
+                    qualified_name=qualified_name,
+                    kind="type",
+                    start_line=node.lineno,
+                    end_line=node.end_lineno or node.lineno,
+                )
+            )
+
+
+def _python_target_definitions(text: str) -> list[dict[str, Any]]:
+    module = ast.parse(text)
+    collector = _PythonTargetDefinitionVisitor()
+    collector.visit(module)
+    return collector.definitions
+
+
 def _python_function_nodes(text: str) -> dict[str, ast.FunctionDef | ast.AsyncFunctionDef]:
     module = ast.parse(text)
     nodes: dict[str, ast.FunctionDef | ast.AsyncFunctionDef] = {}
@@ -972,6 +1082,78 @@ def _tree_sitter_definition_name(node: Any, source: bytes) -> str:
     return "<anonymous>"
 
 
+def _tree_sitter_target_name(node: Any, source: bytes) -> str | None:
+    name_node = node.child_by_field_name("name")
+    if name_node:
+        return _tree_sitter_node_text(name_node, source)
+    declarator = node.child_by_field_name("declarator")
+    if declarator:
+        for child in _walk_tree_sitter(declarator):
+            if child.type in {"identifier", "field_identifier", "property_identifier", "type_identifier"}:
+                return _tree_sitter_node_text(child, source)
+    for child in node.children:
+        if child.type in {"identifier", "field_identifier", "property_identifier", "type_identifier"}:
+            return _tree_sitter_node_text(child, source)
+    parent = getattr(node, "parent", None)
+    if parent and parent.type in {"variable_declarator", "lexical_declaration"}:
+        parent_name = parent.child_by_field_name("name")
+        if parent_name:
+            return _tree_sitter_node_text(parent_name, source)
+    return None
+
+
+def _tree_sitter_target_definitions(
+    text: str, language: str, path: str, profile: dict[str, Any]
+) -> tuple[list[dict[str, Any]], str | None]:
+    try:
+        from tree_sitter import Language, Parser
+
+        grammar = importlib.import_module(profile["grammar_module"])
+    except (ImportError, KeyError) as error:
+        return [], f"pinned Tree-sitter dependency is unavailable: {error}"
+
+    try:
+        grammar_symbol = profile.get("grammar_symbol_by_extension", {}).get(
+            Path(path).suffix.lower(), profile.get("grammar_symbol", "language")
+        )
+        parser_language = Language(getattr(grammar, grammar_symbol)())
+        try:
+            parser = Parser(parser_language)
+        except TypeError:
+            parser = Parser()
+            parser.language = parser_language
+        source = text.encode("utf-8")
+        tree = parser.parse(source)
+    except Exception as error:  # Tree-sitter bindings expose implementation-specific exceptions.
+        return [], f"Tree-sitter parse failed: {error}"
+    if tree.root_node.has_error:
+        return [], "Tree-sitter parse contains syntax errors"
+
+    node_kinds = {
+        node_type: kind
+        for kind, node_types in profile.get("target_definition_nodes", {}).items()
+        for node_type in node_types
+    }
+    definitions: list[dict[str, Any]] = []
+    for node in _walk_tree_sitter(tree.root_node):
+        kind = node_kinds.get(node.type)
+        if kind is None:
+            continue
+        name = _tree_sitter_target_name(node, source)
+        if name is None:
+            continue
+        definitions.append(
+            _target_definition(
+                name=name,
+                qualified_name=name,
+                kind=kind,
+                start_line=node.start_point[0] + 1,
+                end_line=node.end_point[0] + 1,
+            )
+        )
+    return definitions, None
+
+
 def _tree_sitter_direct_nodes(node: Any, definition_types: set[str]) -> Iterable[Any]:
     for child in node.children:
         if child.type in definition_types:
@@ -1263,6 +1445,123 @@ def analyze_text(text: str, language: str | None = None, path: str | Path = "<me
         status=SUPPORTED,
         backend=backend,
         definitions=definitions,
+    )
+
+
+def analyze_target_definitions(
+    text: str, language: str | None = None, path: str | Path = "<memory>"
+) -> dict[str, Any]:
+    """Return AST declarations that can label a Code Reader target page.
+
+    This intentionally avoids metric calculation. It accepts source text reconstructed
+    from a Diff and returns only function or type declarations with source ranges.
+    """
+    path_text = str(path)
+    normalized_language = _normalize_language(language, path_text)
+    profiles = load_profiles()
+    profile = profiles.get(normalized_language or "")
+    if profile is None:
+        return _result(
+            path=path_text,
+            language=normalized_language,
+            status=NOT_AVAILABLE,
+            backend="unavailable",
+            reason="no static-analysis profile is registered for this language",
+        )
+
+    backend = profile["backend"]
+    try:
+        if normalized_language == "python":
+            definitions = _python_target_definitions(text)
+        elif normalized_language == "lua":
+            metric_definitions, lua_error = _lua_definitions(text)
+            if lua_error:
+                return _result(
+                    path=path_text,
+                    language=normalized_language,
+                    status=PARSE_ERROR,
+                    backend=backend,
+                    reason=lua_error,
+                )
+            definitions = [
+                _target_definition(
+                    name=item["name"],
+                    qualified_name=item["qualified_name"],
+                    kind="function",
+                    start_line=item["start_line"],
+                    end_line=item["end_line"],
+                )
+                for item in metric_definitions
+            ]
+        elif backend == "tree-sitter-v1":
+            definitions, tree_sitter_error = _tree_sitter_target_definitions(
+                text, normalized_language or "unknown", path_text, profile
+            )
+            if tree_sitter_error:
+                return _result(
+                    path=path_text,
+                    language=normalized_language,
+                    status=NOT_AVAILABLE,
+                    backend=backend,
+                    reason=tree_sitter_error,
+                )
+        else:
+            return _result(
+                path=path_text,
+                language=normalized_language,
+                status=NOT_AVAILABLE,
+                backend=backend,
+                reason="the profile has no target-definition adapter",
+            )
+    except (SyntaxError, IndentationError) as error:
+        return _result(
+            path=path_text,
+            language=normalized_language,
+            status=PARSE_ERROR,
+            backend=backend,
+            reason=f"{error.__class__.__name__}: {error}",
+        )
+
+    return _result(
+        path=path_text,
+        language=normalized_language,
+        status=SUPPORTED,
+        backend=backend,
+        definitions=definitions,
+    )
+
+
+def select_target_definitions_for_range(
+    analysis: dict[str, Any], start_line: int, end_line: int | None = None
+) -> list[dict[str, Any]]:
+    """Select labels for a page range from ``analyze_target_definitions`` output."""
+    end_line = start_line if end_line is None else end_line
+    if start_line < 1 or end_line < start_line or analysis.get("status") != SUPPORTED:
+        return []
+    definitions = [
+        item
+        for item in analysis.get("definitions", [])
+        if item["start_line"] <= end_line and start_line <= item["end_line"]
+    ]
+    if not definitions:
+        return []
+    starts_in_range = [
+        item for item in definitions if start_line <= item["start_line"] <= end_line
+    ]
+    if starts_in_range:
+        selected = starts_in_range
+    else:
+        enclosing = [
+            item
+            for item in definitions
+            if item["start_line"] <= start_line and end_line <= item["end_line"]
+        ]
+        selected = [
+            min(enclosing, key=lambda item: (item["end_line"] - item["start_line"], -item["start_line"]))
+        ] if enclosing else definitions
+    return sorted(
+        selected,
+        key=lambda item: (item["start_line"], -item["end_line"], item["qualified_name"]),
     )
 
 
