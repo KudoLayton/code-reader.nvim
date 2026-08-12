@@ -128,6 +128,14 @@ function parseDiffReferences(line) {
   return references;
 }
 
+function parseTargetReference(line) {
+  const match = line.match(/^Target:\s*(function|type)\s+(.+?)\s*$/i);
+  if (!match) {
+    return undefined;
+  }
+  return { kind: match[1].toLowerCase(), name: match[2] };
+}
+
 function parseStep(section, index) {
   const headingIndex = section.lines.findIndex((line) => /^#{1,6}\s+/.test(line.text));
   const heading = headingIndex >= 0 ? section.lines[headingIndex] : undefined;
@@ -136,6 +144,7 @@ function parseStep(section, index) {
   const body = [];
   const sources = [];
   const diffReferences = [];
+  let target;
 
   for (let lineIndex = 0; lineIndex < section.lines.length; lineIndex += 1) {
     const line = section.lines[lineIndex];
@@ -154,6 +163,10 @@ function parseStep(section, index) {
     if (/^Cursor:\s*/i.test(value)) {
       continue;
     }
+    if (/^Target:\s*/i.test(value)) {
+      target = parseTargetReference(value);
+      continue;
+    }
     body.push(line.text);
   }
 
@@ -165,6 +178,7 @@ function parseStep(section, index) {
     body: body.join("\n").trim(),
     sources,
     diffReferences,
+    target,
     startLine: section.startLine,
   };
 }
@@ -318,7 +332,7 @@ function appendChangeRows(rows, deletes, adds) {
   }
 }
 
-function resolveReferenceRange(hunk, reference, padding) {
+export function resolveReferenceRange(hunk, reference, padding) {
   if (!reference?.side) {
     return undefined;
   }

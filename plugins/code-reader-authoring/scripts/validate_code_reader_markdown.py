@@ -22,6 +22,7 @@ STEP_LINK_RE = re.compile(r"\[\[([^\]|]+)(?:\|[^\]]+)?\]\]")
 
 SOURCE_DIRECTIVE_RE = re.compile(r"^\s*Source:\s*`?([\w._\-/\\]+)#L(\d+)(?:-L?(\d+))?`?\s*$")
 DIFF_DIRECTIVE_RE = re.compile(r"^\s*Diff:\s*`?([\w._\-/\\]+)#([Hh]\d+)(?:@([A-Za-z]+):([^\s`\]]+))?`?\s*$")
+TARGET_DIRECTIVE_RE = re.compile(r"^\s*Target:\s*(function|type)\s+(\S(?:.*\S)?)\s*$", re.IGNORECASE)
 
 
 @dataclass
@@ -136,6 +137,8 @@ def directive_kind(line: str) -> str | None:
         return "diff"
     if re.match(r"^\s*Cursor\s*:", line):
         return "cursor"
+    if re.match(r"^\s*Target\s*:", line):
+        return "target"
     return None
 
 
@@ -156,7 +159,7 @@ def metadata_preamble_indexes(lines: list[str]) -> set[int]:
 
 
 def collect_directive_indexes(lines: list[str]) -> dict[str, list[int]]:
-    indexes = {"source": [], "diff": [], "cursor": []}
+    indexes = {"source": [], "diff": [], "cursor": [], "target": []}
     for index, line in enumerate(lines):
         kind = directive_kind(line)
         if kind:
@@ -180,6 +183,8 @@ def validate_page_structure(
             errors.append(f"front page starting at line {section_start} must not contain Source or Diff references")
         if directives["cursor"]:
             errors.append(f"front page starting at line {section_start} must not contain Cursor directives")
+        if directives["target"]:
+            errors.append(f"front page starting at line {section_start} must not contain Target directives")
         return errors
 
     for index in headings[1:]:
@@ -192,6 +197,12 @@ def validate_page_structure(
         for index in indexes:
             if index not in preamble:
                 errors.append(f"line {section_start + index}: {kind.title()} directives are only allowed in the metadata preamble")
+
+    if len(directives["target"]) > 1:
+        errors.append(f"section starting at line {section_start} has multiple Target directives")
+    for index in directives["target"]:
+        if not TARGET_DIRECTIVE_RE.match(lines[index]):
+            errors.append(f"line {section_start + index}: Target must be `function <name>` or `type <name>`")
 
     if doc_type == "code-reader":
         if directives["diff"]:

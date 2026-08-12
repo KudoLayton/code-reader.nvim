@@ -15,6 +15,7 @@ import {
   renderDiffSnippet,
 } from "../scripts/pdf/document.mjs";
 import { renderCodeReaderHtml } from "../scripts/pdf/render.mjs";
+import { findTargetDefinitions } from "../scripts/pdf/targets.mjs";
 
 const testDirectory = path.dirname(fileURLToPath(import.meta.url));
 const repositoryRoot = path.resolve(testDirectory, "../../..");
@@ -63,6 +64,195 @@ test("parses source walkthrough steps and Source ranges", async () => {
     endLine: 21,
     expectedHash: undefined,
   });
+});
+
+test("renders automatic and manual target definitions on explanation and code pages", async () => {
+  const temporaryDirectory = await mkdtemp(path.join(os.tmpdir(), "code-reader-target-definitions-"));
+  const sourcePath = path.join(temporaryDirectory, "request.ts");
+  const markdownPath = path.join(temporaryDirectory, "walkthrough.md");
+
+  await writeFile(
+    sourcePath,
+    [
+      "interface RequestOptions {",
+      "  url: string;",
+      "}",
+      "",
+      "function send(options: RequestOptions) {",
+      "  return options.url;",
+      "}",
+    ].join("\n"),
+    "utf8",
+  );
+  await writeFile(
+    markdownPath,
+    [
+      "---",
+      "type: code-reader",
+      "version: 1",
+      "---",
+      "<!-- code-reader: front-page -->",
+      "# Overview",
+      "---",
+      "# 1. Request options",
+      "Source: `request.ts#L1-L3`",
+      "---",
+      "# 2. Send request",
+      "Target: function deliver",
+      "Source: `request.ts#L5-L7`",
+    ].join("\n"),
+    "utf8",
+  );
+
+  try {
+    const document = parseCodeReaderDocument(await readFile(markdownPath, "utf8"), { markdownPath });
+    const html = await renderCodeReaderHtml(document, { root: temporaryDirectory, padding: 0 });
+
+    assert.equal((html.match(/Type: RequestOptions/g) ?? []).length, 2);
+    assert.equal((html.match(/Function: deliver/g) ?? []).length, 2);
+    assert.doesNotMatch(html, /<p>Target: function deliver<\/p>/);
+  } finally {
+    await rm(temporaryDirectory, { recursive: true, force: true });
+  }
+});
+
+test("lists every definition whose declaration is in a source target range", () => {
+  const targets = findTargetDefinitions(
+    [
+      "function parseRequest() {",
+      "  return true;",
+      "}",
+      "",
+      "interface RequestOptions {",
+      "  url: string;",
+      "}",
+    ],
+    "request.ts",
+    1,
+    7,
+  );
+
+  assert.deepEqual(targets, [
+    { kind: "function", name: "parseRequest" },
+    { kind: "type", name: "RequestOptions" },
+  ]);
+});
+
+test("uses the primary Diff side to render its target definition", async () => {
+  const temporaryDirectory = await mkdtemp(path.join(os.tmpdir(), "code-reader-diff-target-definition-"));
+  const sourcePath = path.join(temporaryDirectory, "request.ts");
+  const diffPath = path.join(temporaryDirectory, "request.diff");
+  const markdownPath = path.join(temporaryDirectory, "walkthrough.md");
+
+  await writeFile(sourcePath, ["function deliverRequest() {", "  return true;", "}"].join("\n"), "utf8");
+  await writeFile(
+    diffPath,
+    [
+      "diff --git a/request.ts b/request.ts",
+      "--- a/request.ts",
+      "+++ b/request.ts",
+      "@@ -1,3 +1,3 @@",
+      "-function sendRequest() {",
+      "+function deliverRequest() {",
+      "   return true;",
+      " }",
+    ].join("\n"),
+    "utf8",
+  );
+  await writeFile(
+    markdownPath,
+    [
+      "---",
+      "type: code-reader-diff",
+      "version: 1",
+      "diff: request.diff",
+      "---",
+      "<!-- code-reader: front-page -->",
+      "# Overview",
+      "---",
+      "# 1. New function",
+      "Diff: `request.ts#H1`",
+      "---",
+      "# 2. Old function",
+      "Diff: `request.ts#H1@old:L1-L3`",
+    ].join("\n"),
+    "utf8",
+  );
+
+  try {
+    const document = parseCodeReaderDocument(await readFile(markdownPath, "utf8"), { markdownPath });
+    const html = await renderCodeReaderHtml(document, { root: temporaryDirectory, padding: 0 });
+
+    assert.equal((html.match(/Function: deliverRequest/g) ?? []).length, 2);
+    assert.equal((html.match(/Function: sendRequest/g) ?? []).length, 2);
+  } finally {
+    await rm(temporaryDirectory, { recursive: true, force: true });
+  }
+});
+
+test("uses a focused Diff range instead of the whole hunk for its target definition", async () => {
+  const temporaryDirectory = await mkdtemp(path.join(os.tmpdir(), "code-reader-focused-diff-target-"));
+  const sourcePath = path.join(temporaryDirectory, "request.ts");
+  const diffPath = path.join(temporaryDirectory, "request.diff");
+  const markdownPath = path.join(temporaryDirectory, "walkthrough.md");
+
+  await writeFile(
+    sourcePath,
+    [
+      "function sendRequest() {",
+      "  return true;",
+      "}",
+      "",
+      "function auditRequest() {",
+      "  return false;",
+      "}",
+    ].join("\n"),
+    "utf8",
+  );
+  await writeFile(
+    diffPath,
+    [
+      "diff --git a/request.ts b/request.ts",
+      "--- a/request.ts",
+      "+++ b/request.ts",
+      "@@ -1,7 +1,7 @@",
+      " function sendRequest() {",
+      "-  return false;",
+      "+  return true;",
+      " }",
+      " ",
+      " function auditRequest() {",
+      "   return false;",
+      " }",
+    ].join("\n"),
+    "utf8",
+  );
+  await writeFile(
+    markdownPath,
+    [
+      "---",
+      "type: code-reader-diff",
+      "version: 1",
+      "diff: request.diff",
+      "---",
+      "<!-- code-reader: front-page -->",
+      "# Overview",
+      "---",
+      "# 1. Audit function",
+      "Diff: `request.ts#H1@new:L5-L7`",
+    ].join("\n"),
+    "utf8",
+  );
+
+  try {
+    const document = parseCodeReaderDocument(await readFile(markdownPath, "utf8"), { markdownPath });
+    const html = await renderCodeReaderHtml(document, { root: temporaryDirectory, padding: 0 });
+
+    assert.equal((html.match(/Function: auditRequest/g) ?? []).length, 2);
+    assert.doesNotMatch(html, /Function: sendRequest/);
+  } finally {
+    await rm(temporaryDirectory, { recursive: true, force: true });
+  }
 });
 
 test("keeps the requested Source range highlighted while padding surrounding lines", () => {

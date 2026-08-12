@@ -41,6 +41,35 @@ class ValidateCodeReaderMarkdownTests(unittest.TestCase):
 
             self.assertEqual(errors, [])
 
+    def test_target_metadata_in_the_page_preamble_is_valid(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            source_path = root / "src" / "example.py"
+            source_path.parent.mkdir()
+            source_path.write_text("def parse_request():\n    return True\n", encoding="utf-8")
+            markdown_path = root / "walkthrough.md"
+            markdown_path.write_text(
+                "\n".join(
+                    [
+                        "---",
+                        "type: code-reader",
+                        "version: 1",
+                        "---",
+                        "<!-- code-reader: front-page -->",
+                        "# Overview",
+                        "---",
+                        "# 1. Parse request",
+                        "Target: function parse_request",
+                        "Source: src/example.py#L1-L2",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+
+            errors = validate_code_reader_markdown.validate_doc(root, markdown_path, False)
+
+            self.assertEqual(errors, [])
+
     def test_diff_page_with_multiple_ranges_is_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
             root = Path(temporary_directory)

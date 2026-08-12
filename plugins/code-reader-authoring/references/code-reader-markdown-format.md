@@ -21,7 +21,7 @@ version: 1
 - The front page must explain the problem, expected reader outcome, a concrete representative example, high-level structure, main module roles, and the reading flow before the detailed steps.
 - Use Mermaid diagrams on the front page or individual steps when they clarify structure, control flow, data flow, or hunk impact.
 - Prefer plain prose or lists instead of Mermaid when the user disabled Mermaid rendering or `:checkhealth code_reader` reports that Node, npm, or `beautiful-mermaid` is unavailable.
-- Do not put `Source:` or `Diff:` references on the front page. Put references on concrete explanation pages.
+- Do not put `Source:`, `Diff:`, or `Target:` metadata on the front page. Put metadata on concrete explanation pages.
 - Use numeric heading ids for top-level and nested steps, such as `# 1. Request lifecycle`, `## 1.1. Parse request`, and `### 1.1.1. Validate method`.
 - Heading depth on the first heading of each `---`-separated page drives TOC nesting. A numeric heading that follows the opening heading in the same page is invalid: give it its own `---` page. A non-numeric child heading is allowed only as conceptual organization for the same target code.
 - Use `[[step-id]]` or `[[step-id|label]]` only for links to existing steps in the same explanation.
@@ -34,8 +34,18 @@ Every concrete page has a metadata preamble immediately after its opening headin
 
 - A `type: code-reader` page has exactly one continuous `Source:` reference in that preamble. Its optional `Cursor:` reference must name the same path and stay inside that Source range.
 - A `type: code-reader-diff` page has exactly one `Diff:` reference in that preamble. An unmodified hunk reference may compare old and new code, while a side-specific reference narrows the page to one old or new range. Explain another hunk or range on a separate page.
+- Optionally add one `Target: function <name>` or `Target: type <name>` line to override the target-definition label in both the explanation and its code page. Use it only when automatic detection is unavailable or selects the wrong declaration.
 - A page must not contain an additional `Source:` or `Diff:` reference after the preamble, and a document type must not use the other reference kind.
 - A page may explain a function, method, type, class, named declaration, or one top-level declaration or statement. It must not combine sibling definitions, multiple class members, or multiple top-level statements. A class container page is allowed only for its declaration or contract, not to explain several members.
+
+## Target Definition Labels
+
+The PDF renderer labels each concrete explanation page and its matching Source or Diff code page with the target function or type definition.
+
+- For a Source page, it finds definitions that contain the Source range. If the range starts across several declarations, it lists every affected function or type definition.
+- For a Diff page, `@new` selects the after-side target and `@old` selects the before-side target. A comparison without a side prefers the after-side target, then falls back to the before-side target.
+- Detection is best-effort for supported declaration forms. If no definition can be resolved, omit the label; do not invent a range label.
+- `Target:` is a manual override. Keep its name as it appears in code, and do not use it merely to repeat a definition that the renderer can already identify.
 
 ## Code Explanation
 

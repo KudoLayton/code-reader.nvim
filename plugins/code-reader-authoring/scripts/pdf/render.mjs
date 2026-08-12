@@ -13,7 +13,9 @@ import {
   buildSourceSnippet,
   parseUnifiedDiff,
   renderDiffSnippet,
+  resolveReferenceRange,
 } from "./document.mjs";
+import { findTargetDefinitions, formatTargetDefinition } from "./targets.mjs";
 
 const filetypeByExtension = {
   c: "c",
@@ -175,13 +177,21 @@ function screenContentAttributes(screenPageName) {
   return screenPageName ? " data-screen-content" : "";
 }
 
-async function renderSourceSection(reference, sourceLines, padding, screenPageName) {
+function renderTargetDefinition(targets) {
+  if (!targets?.length) {
+    return "";
+  }
+  return `<strong class="target-definition">${escapeHtml(targets.map(formatTargetDefinition).join(" · "))}</strong>`;
+}
+
+async function renderSourceSection(reference, sourceLines, padding, screenPageName, targets) {
   const snippet = buildSourceSnippet(sourceLines, reference, padding);
   const rows = await renderCodeRows(snippet.lines, reference.path);
   return [
     `<section class="pdf-section pdf-section--code"${screenPageAttributes(screenPageName, "code")}>`,
     '<header class="code-header">',
     `<span>Source</span><strong>${escapeHtml(reference.path)}</strong>`,
+    renderTargetDefinition(targets),
     `<span>L${reference.startLine}-L${reference.endLine}</span>`,
     "</header>",
     `<div class="code-block"${screenContentAttributes(screenPageName)}>${rows}</div>`,
@@ -189,7 +199,7 @@ async function renderSourceSection(reference, sourceLines, padding, screenPageNa
   ].join("\n");
 }
 
-async function renderDiffSection(reference, hunk, analysis, padding, screenPageName) {
+async function renderDiffSection(reference, hunk, analysis, padding, screenPageName, targets) {
   const snippet = renderDiffSnippet(hunk, {
     beforeLines: analysis.beforeLines,
     afterLines: analysis.afterLines,
@@ -206,6 +216,7 @@ async function renderDiffSection(reference, hunk, analysis, padding, screenPageN
     `<section class="pdf-section pdf-section--code"${screenPageAttributes(screenPageName, "code")}>`,
     '<header class="code-header">',
     `<span>Diff ${escapeHtml(reference.hunkId)}</span><strong>${escapeHtml(reference.path)}</strong>`,
+    renderTargetDefinition(targets),
     `<span>${escapeHtml(analysis.status)}</span>`,
     "</header>",
     `<div class="diff-grid"${screenContentAttributes(screenPageName)}>`,
@@ -232,12 +243,13 @@ async function renderDiffRows(rows, filePath, showFocusedRange) {
   return wrapFocusedRange(rows, lines, showFocusedRange);
 }
 
-function renderExplanationSection(step, index, total, screenPageName) {
+function renderExplanationSection(step, index, total, screenPageName, targets) {
   return [
     `<section class="pdf-section pdf-section--explanation"${screenPageAttributes(screenPageName, "explanation")}>`,
     `<div class="explanation-content"${screenContentAttributes(screenPageName)}>`,
     '<header class="explanation-header">',
     `<span>Code Reader · ${step.kind === "front_page" ? "Overview" : `Step ${index}/${total}`}</span>`,
+    renderTargetDefinition(targets),
     "</header>",
     `<h1>${escapeHtml(step.title)}</h1>`,
     '<article class="markdown-body">',
@@ -288,6 +300,30 @@ async function analyzeFile(root, file) {
   }
 }
 
+function sourceTargetDefinitions(step, reference, sourceLines) {
+  return step.target ? [step.target] : findTargetDefinitions(sourceLines, reference.path, reference.startLine, reference.endLine);
+}
+
+function diffTargetDefinitions(step, reference, hunk, analysis) {
+  if (step.target) {
+    return [step.target];
+  }
+  const sides = reference.side ? [reference.side] : ["new", "old"];
+  for (const side of sides) {
+    const lines = side === "old" ? analysis.beforeLines : analysis.afterLines;
+    const focusedRange = reference.side === side && (reference.startBound || reference.endBound)
+      ? resolveReferenceRange(hunk, reference, 0)
+      : undefined;
+    const startLine = focusedRange?.startLine ?? (side === "old" ? hunk.oldStart : hunk.newStart);
+    const endLine = focusedRange?.endLine ?? (side === "old" ? hunk.oldEnd : hunk.newEnd);
+    const targets = findTargetDefinitions(lines, reference.path, startLine, endLine);
+    if (targets.length > 0) {
+      return targets;
+    }
+  }
+  return [];
+}
+
 export async function renderCodeReaderHtml(document, options) {
   const root = path.resolve(options.root);
   const padding = options.padding;
@@ -303,26 +339,70 @@ export async function renderCodeReaderHtml(document, options) {
   for (let index = 0; index < document.steps.length; index += 1) {
     const step = document.steps[index];
     step.html = await markdownToHtml(step.body);
-    sections.push(renderExplanationSection(step, index + 1, document.steps.length, nextScreenPageName("explanation")));
 
     if (step.kind === "front_page") {
+      sections.push(renderExplanationSection(step, index + 1, document.steps.length, nextScreenPageName("explanation")));
       continue;
     }
 
     if (document.type === "code-reader") {
-      for (const reference of step.sources) {
-        sections.push(await renderSourceSection(reference, await loadSourceLines(root, reference), padding, nextScreenPageName("code")));
+      const sourcePages = await Promise.all(step.sources.map(async (reference) => {
+        const sourceLines = await loadSourceLines(root, reference);
+        return { reference, sourceLines, targets: sourceTargetDefinitions(step, reference, sourceLines) };
+      }));
+      sections.push(
+        renderExplanationSection(
+          step,
+          index + 1,
+          document.steps.length,
+          nextScreenPageName("explanation"),
+          sourcePages[0]?.targets,
+        ),
+      );
+      for (const sourcePage of sourcePages) {
+        sections.push(
+          await renderSourceSection(
+            sourcePage.reference,
+            sourcePage.sourceLines,
+            padding,
+            nextScreenPageName("code"),
+            sourcePage.targets,
+          ),
+        );
       }
       continue;
     }
 
+    const diffPages = [];
     for (const reference of step.diffReferences) {
       const file = diffModel.files.find((item) => item.path === reference.path);
       const hunk = file?.hunks.find((item) => item.id === reference.hunkId);
       if (!hunk) {
         throw new Error(`Cannot find ${reference.path}#${reference.hunkId} in the referenced diff.`);
       }
-      sections.push(await renderDiffSection(reference, hunk, await analyzeFile(root, file), padding, nextScreenPageName("code")));
+      const analysis = await analyzeFile(root, file);
+      diffPages.push({ reference, hunk, analysis, targets: diffTargetDefinitions(step, reference, hunk, analysis) });
+    }
+    sections.push(
+      renderExplanationSection(
+        step,
+        index + 1,
+        document.steps.length,
+        nextScreenPageName("explanation"),
+        diffPages[0]?.targets,
+      ),
+    );
+    for (const diffPage of diffPages) {
+      sections.push(
+        await renderDiffSection(
+          diffPage.reference,
+          diffPage.hunk,
+          diffPage.analysis,
+          padding,
+          nextScreenPageName("code"),
+          diffPage.targets,
+        ),
+      );
     }
   }
 
@@ -342,7 +422,10 @@ html, body { margin: 0; color: #1f2937; background: #fff; font-family: "Malgun G
 .pdf-section:first-child { break-before: auto; }
 .pdf-section--explanation { page: explanation; font-size: 10.5pt; line-height: 1.7; }
 .pdf-section--code { page: code; break-after: page; color: #1f2937; font-family: "Cascadia Mono", Consolas, monospace; }
-.explanation-header { color: #64748b; font-size: 9pt; letter-spacing: .04em; text-transform: uppercase; border-bottom: 1px solid #cbd5e1; padding-bottom: 4mm; }
+.explanation-header { display: flex; gap: 4mm; align-items: baseline; color: #64748b; font-size: 9pt; letter-spacing: .04em; text-transform: uppercase; border-bottom: 1px solid #cbd5e1; padding-bottom: 4mm; }
+.target-definition { color: #0f172a; font-family: "Cascadia Mono", Consolas, monospace; font-size: 8.5pt; font-weight: 600; letter-spacing: normal; text-transform: none; }
+.explanation-header .target-definition { margin-left: auto; }
+.code-header .target-definition { font-size: 8.5pt; }
 h1 { color: #0f172a; font-size: 24pt; line-height: 1.25; margin: 8mm 0 7mm; }
 .markdown-body h2 { color: #1e293b; font-size: 15pt; margin-top: 7mm; }
 .markdown-body h3 { color: #334155; font-size: 12pt; margin-top: 5mm; }
