@@ -282,6 +282,46 @@ test("generates a side-by-side Diff PDF", async () => {
   }
 });
 
+test("marks screen explanations for A4-width content-sized pages", async () => {
+  const temporaryDirectory = await mkdtemp(path.join(os.tmpdir(), "code-reader-screen-explanation-"));
+  const markdownPath = path.join(temporaryDirectory, "walkthrough.md");
+  const sourcePath = path.join(temporaryDirectory, "example.lua");
+
+  await writeFile(sourcePath, "return true\n", "utf8");
+  await writeFile(
+    markdownPath,
+    [
+      "---",
+      "type: code-reader",
+      "version: 1",
+      "---",
+      "<!-- code-reader: front-page -->",
+      "# Overview",
+      "A short introduction.",
+      "---",
+      "# 1. Explain the result",
+      "Source: `example.lua#L1`",
+      "This short explanation should not fill an A4 page.",
+    ].join("\n"),
+    "utf8",
+  );
+
+  try {
+    const document = parseCodeReaderDocument(await readFile(markdownPath, "utf8"), { markdownPath });
+    const html = await renderCodeReaderHtml(document, {
+      root: temporaryDirectory,
+      padding: 0,
+      layout: "screen",
+    });
+
+    assert.match(html, /data-screen-page-kind="explanation"/);
+    assert.match(html, /class="explanation-content" data-screen-content/);
+    assert.match(html, /\.pdf-layout--screen \.pdf-section--explanation\[data-screen-page\] \{ width: 174mm; \}/);
+  } finally {
+    await rm(temporaryDirectory, { recursive: true, force: true });
+  }
+});
+
 test("generates a screen-layout code page without wrapping a long source line", async () => {
   const temporaryDirectory = await mkdtemp(path.join(os.tmpdir(), "code-reader-screen-pdf-"));
   const markdownPath = path.join(temporaryDirectory, "walkthrough.md");
@@ -289,7 +329,7 @@ test("generates a screen-layout code page without wrapping a long source line", 
   const nextSourcePath = path.join(temporaryDirectory, "next.lua");
   const output = path.join(temporaryDirectory, "walkthrough.pdf");
   const longLine = `local request_path = \"/${"segment/".repeat(120)}resource\"`;
-  const sourceLines = Array.from({ length: 80 }, (_, index) => `${longLine} -- ${index + 1}`);
+  const sourceLines = Array.from({ length: 12 }, (_, index) => `${longLine} -- ${index + 1}`);
 
   await writeFile(sourcePath, `${sourceLines.join("\n")}\n`, "utf8");
   await writeFile(nextSourcePath, "return true\n", "utf8");
@@ -307,7 +347,7 @@ test("generates a screen-layout code page without wrapping a long source line", 
       "---",
       "# Wide source",
       "",
-      "Source: `wide.lua#L1-L80`",
+      "Source: `wide.lua#L1-L12`",
       "",
       "---",
       "# Next explanation",
@@ -327,6 +367,7 @@ test("generates a screen-layout code page without wrapping a long source line", 
 
     assert.match(html, /pdf-layout--screen/);
     assert.match(html, /data-screen-page=/);
+    assert.match(html, /data-screen-page-kind="explanation"/);
     assert.match(html, /white-space: pre;/);
     await writePdfFromHtml(html, output, await findBrowserExecutable());
     const pdf = await PDFDocument.load(await readFile(output));
@@ -335,7 +376,8 @@ test("generates a screen-layout code page without wrapping a long source line", 
     assert.equal(pdf.getPageCount(), 5);
     assert.equal(dimensions[2].width > 842, true);
     assert.equal(dimensions[2].height > 595, true);
-    assert.equal(dimensions[3].height > dimensions[3].width, true);
+    assert.equal(dimensions[3].width > 590 && dimensions[3].width < 600, true);
+    assert.equal(dimensions[3].height < 842, true);
     assert.equal(dimensions[4].width > dimensions[4].height, true);
   } finally {
     await rm(temporaryDirectory, { recursive: true, force: true });

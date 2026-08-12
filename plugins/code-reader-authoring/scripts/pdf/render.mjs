@@ -164,11 +164,11 @@ function wrapFocusedRange(rows, lines, showFocusedRange) {
   return output.join("\n");
 }
 
-function screenPageAttributes(screenPageName) {
+function screenPageAttributes(screenPageName, kind) {
   if (!screenPageName) {
     return "";
   }
-  return ` data-screen-page="${screenPageName}" style="page: ${screenPageName}"`;
+  return ` data-screen-page="${screenPageName}" data-screen-page-kind="${kind}" style="page: ${screenPageName}"`;
 }
 
 function screenContentAttributes(screenPageName) {
@@ -179,7 +179,7 @@ async function renderSourceSection(reference, sourceLines, padding, screenPageNa
   const snippet = buildSourceSnippet(sourceLines, reference, padding);
   const rows = await renderCodeRows(snippet.lines, reference.path);
   return [
-    `<section class="pdf-section pdf-section--code"${screenPageAttributes(screenPageName)}>`,
+    `<section class="pdf-section pdf-section--code"${screenPageAttributes(screenPageName, "code")}>`,
     '<header class="code-header">',
     `<span>Source</span><strong>${escapeHtml(reference.path)}</strong>`,
     `<span>L${reference.startLine}-L${reference.endLine}</span>`,
@@ -203,7 +203,7 @@ async function renderDiffSection(reference, hunk, analysis, padding, screenPageN
     renderDiffRows(afterRows, reference.path, Boolean(reference.side)),
   ]);
   return [
-    `<section class="pdf-section pdf-section--code"${screenPageAttributes(screenPageName)}>`,
+    `<section class="pdf-section pdf-section--code"${screenPageAttributes(screenPageName, "code")}>`,
     '<header class="code-header">',
     `<span>Diff ${escapeHtml(reference.hunkId)}</span><strong>${escapeHtml(reference.path)}</strong>`,
     `<span>${escapeHtml(analysis.status)}</span>`,
@@ -232,9 +232,10 @@ async function renderDiffRows(rows, filePath, showFocusedRange) {
   return wrapFocusedRange(rows, lines, showFocusedRange);
 }
 
-function renderExplanationSection(step, index, total) {
+function renderExplanationSection(step, index, total, screenPageName) {
   return [
-    '<section class="pdf-section pdf-section--explanation">',
+    `<section class="pdf-section pdf-section--explanation"${screenPageAttributes(screenPageName, "explanation")}>`,
+    `<div class="explanation-content"${screenContentAttributes(screenPageName)}>`,
     '<header class="explanation-header">',
     `<span>Code Reader · ${step.kind === "front_page" ? "Overview" : `Step ${index}/${total}`}</span>`,
     "</header>",
@@ -242,6 +243,7 @@ function renderExplanationSection(step, index, total) {
     '<article class="markdown-body">',
     step.html,
     "</article>",
+    "</div>",
     "</section>",
   ].join("\n");
 }
@@ -296,12 +298,12 @@ export async function renderCodeReaderHtml(document, options) {
   const sections = [];
   let screenPageCount = 0;
   const diffModel = document.type === "code-reader-diff" ? await loadDiffModel(document) : undefined;
-  const nextScreenPageName = () => (layout === "screen" ? `code-screen-${++screenPageCount}` : undefined);
+  const nextScreenPageName = (kind) => (layout === "screen" ? `${kind}-screen-${++screenPageCount}` : undefined);
 
   for (let index = 0; index < document.steps.length; index += 1) {
     const step = document.steps[index];
     step.html = await markdownToHtml(step.body);
-    sections.push(renderExplanationSection(step, index + 1, document.steps.length));
+    sections.push(renderExplanationSection(step, index + 1, document.steps.length, nextScreenPageName("explanation")));
 
     if (step.kind === "front_page") {
       continue;
@@ -309,7 +311,7 @@ export async function renderCodeReaderHtml(document, options) {
 
     if (document.type === "code-reader") {
       for (const reference of step.sources) {
-        sections.push(await renderSourceSection(reference, await loadSourceLines(root, reference), padding, nextScreenPageName()));
+        sections.push(await renderSourceSection(reference, await loadSourceLines(root, reference), padding, nextScreenPageName("code")));
       }
       continue;
     }
@@ -320,7 +322,7 @@ export async function renderCodeReaderHtml(document, options) {
       if (!hunk) {
         throw new Error(`Cannot find ${reference.path}#${reference.hunkId} in the referenced diff.`);
       }
-      sections.push(await renderDiffSection(reference, hunk, await analyzeFile(root, file), padding, nextScreenPageName()));
+      sections.push(await renderDiffSection(reference, hunk, await analyzeFile(root, file), padding, nextScreenPageName("code")));
     }
   }
 
@@ -367,6 +369,7 @@ h1 { color: #0f172a; font-size: 24pt; line-height: 1.25; margin: 8mm 0 7mm; }
 .code-line--added { background: #dcfce7; }
 .code-line--modified { background: #fef3c7; }
 .pdf-layout--screen .pdf-section--code { break-after: page; break-inside: avoid-page; }
+.pdf-layout--screen .pdf-section--explanation[data-screen-page] { width: 174mm; }
 .pdf-layout--screen .code-block { display: inline-block; min-width: 100%; width: max-content; }
 .pdf-layout--screen .code-line { grid-template-columns: 14mm 5mm max-content; width: max-content; }
 .pdf-layout--screen .code-line code { min-width: max-content; overflow-wrap: normal; white-space: pre; }

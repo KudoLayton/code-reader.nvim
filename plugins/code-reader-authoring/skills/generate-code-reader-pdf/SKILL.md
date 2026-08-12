@@ -14,7 +14,7 @@ Render an existing Code Reader Markdown file. Do not rewrite its explanation or 
 3. Locate the plugin root two levels above this Skill and use its `scripts/code-reader-pdf.mjs` entrypoint. Pass the project root explicitly with `--root`.
 4. Check for the plugin root's `node_modules`. If dependencies are missing, ask for approval before running `npm install` in the plugin root. Do not install packages in the user's project.
 5. Run the CLI without `--output` when using the default beside the Markdown input; otherwise pass the requested output path. Use `--padding <n>` only when the user requests context other than the default five lines. A ranged Diff reference such as `@new:L10-L20` renders that side's selected range with padding rather than the entire hunk. Keep direct Before/After row pairs intact, but omit additions or deletions outside the selected range. Use `--layout screen` when the user wants a screen-only PDF, wider code or diff pages, no automatic code-line wrapping, or every referenced code block on one page. Use `--browser <path>` only when Chrome or Edge cannot be discovered automatically.
-6. Verify that the PDF exists at the selected path. Render its pages to a temporary directory and inspect the overview, a source/code page, and a diff page when present. Check Mermaid, page orientation, line numbers, white code backgrounds under the fixed light color scheme, and readable wrapping. Ranged Diff pages must exclude unrelated hunk rows and show selected rows with a blue rail and outline distinct from the addition, deletion, and modification colors; screen-layout code must not wrap or split. Its following explanation must start on a new page. Remove the temporary images after inspection.
+6. Verify that the PDF exists at the selected path. Render its pages to a temporary directory and inspect the overview, a source/code page, and a diff page when present. Check Mermaid, page dimensions, line numbers, white code backgrounds under the fixed light color scheme, and readable wrapping. Ranged Diff pages must exclude unrelated hunk rows and show selected rows with a blue rail and outline distinct from the addition, deletion, and modification colors; screen-layout code must not wrap or split, and screen-layout explanations must keep an A4-width reading column without a large unused lower area. Remove the temporary images after inspection.
 
 ## Command Shape
 
@@ -28,5 +28,5 @@ The CLI needs Node.js and either Google Chrome or Microsoft Edge. By default it 
 
 - Report missing source files, invalid references, malformed Mermaid, or missing diff hunks before claiming success.
 - If Chrome and Edge are unavailable, report the requirement and offer `--browser` for an explicit executable path.
-- If a screen-layout page exceeds Chromium's PDF size limit, ask the user to reduce the referenced source or diff range, or use `--layout print`.
+- If a screen-layout page exceeds Chromium's PDF size limit, ask the user to reduce the explanation or referenced source or diff range, or use `--layout print`.
 - Preserve an existing output PDF when generation fails; do not replace it with a partial result.

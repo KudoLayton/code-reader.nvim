@@ -9,6 +9,9 @@ const require = createRequire(import.meta.url);
 const screenPageMargin = 45;
 const minimumScreenPageWidth = 1122;
 const minimumScreenPageHeight = 794;
+const screenExplanationPageWidth = 794;
+const screenExplanationPageHorizontalMargin = 68;
+const screenExplanationPageVerticalMargin = 60;
 const maximumPdfPageDimension = 19_000;
 
 async function existingPath(candidate) {
@@ -61,6 +64,7 @@ export async function sizeScreenPages(page) {
       }
       return {
         name: section.dataset.screenPage,
+        kind: section.dataset.screenPageKind,
         contentWidth: Math.ceil(Math.max(content.scrollWidth, content.getBoundingClientRect().width)),
         contentHeight: Math.ceil(Math.max(content.scrollHeight, content.getBoundingClientRect().height)),
         headerHeight: Math.ceil(section.querySelector(".code-header")?.getBoundingClientRect().height ?? 0),
@@ -72,16 +76,23 @@ export async function sizeScreenPages(page) {
     return [];
   }
 
-  const pages = measurements.map(({ name, contentWidth, contentHeight, headerHeight }) => {
-    const width = Math.max(minimumScreenPageWidth, contentWidth + screenPageMargin * 2);
-    const height = Math.max(minimumScreenPageHeight, contentHeight + headerHeight + screenPageMargin * 2);
+  const pages = measurements.map(({ name, kind, contentWidth, contentHeight, headerHeight }) => {
+    const isExplanation = kind === "explanation";
+    const width = isExplanation
+      ? screenExplanationPageWidth
+      : Math.max(minimumScreenPageWidth, contentWidth + screenPageMargin * 2);
+    const height = isExplanation
+      ? contentHeight + screenExplanationPageVerticalMargin * 2
+      : Math.max(minimumScreenPageHeight, contentHeight + headerHeight + screenPageMargin * 2);
+    const marginX = isExplanation ? screenExplanationPageHorizontalMargin : screenPageMargin;
+    const marginY = isExplanation ? screenExplanationPageVerticalMargin : screenPageMargin;
     if (width > maximumPdfPageDimension || height > maximumPdfPageDimension) {
-      throw new Error(`Screen layout for ${name} exceeds Chromium's PDF page limit. Use --layout print or reduce the referenced code range.`);
+      throw new Error(`Screen layout for ${name} exceeds Chromium's PDF page limit. Use --layout print or reduce the explanation or referenced code range.`);
     }
-    return { name, width, height };
+    return { name, width, height, marginX, marginY };
   });
   const rules = pages
-    .map(({ name, width, height }) => `@page ${name} { size: ${width}px ${height}px; margin: ${screenPageMargin}px; }`)
+    .map(({ name, width, height, marginX, marginY }) => `@page ${name} { size: ${width}px ${height}px; margin: ${marginY}px ${marginX}px; }`)
     .join("\n");
   await page.addStyleTag({ content: rules });
   await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(resolve)));
@@ -115,7 +126,7 @@ export async function writePdfFromHtml(html, outputPath, browserPath) {
     stage = "wait for fonts";
     await page.bringToFront();
     await page.evaluate(() => document.fonts.ready);
-    stage = "size screen code pages";
+    stage = "size screen pages";
     result.screenPages = await sizeScreenPages(page);
     stage = "generate PDF";
 
