@@ -1,13 +1,18 @@
 {
-  "schema": "code-reader-static-analysis-requirements-lock/v1",
+  "schema": "code-reader-static-analysis-requirements-lock/v2",
   "installable": true,
-  "runtime_dependencies": {
-    "tree-sitter": "0.24.0"
+  "runtime_families": {
+    "tree-sitter-abi-13-15": {
+      "package": "tree-sitter",
+      "version": "0.25.0",
+      "minimum_abi": 13,
+      "maximum_abi": 15
+    }
   },
   "available_backends": {
     "stdlib-lua-lexer-v1": {"runtime": "python", "packages": []},
     "stdlib-python-ast-v1": {"runtime": "python", "packages": []},
-    "tree-sitter-v1": {"runtime": "python", "packages": ["tree-sitter"]}
+    "tree-sitter-v1": {"runtime": "python", "runtime_family": "tree-sitter-abi-13-15"}
   },
   "pinned_dependencies": {
     "tree-sitter-c": "0.24.1",

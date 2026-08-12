@@ -23,9 +23,10 @@ import sys
 from pathlib import Path
 from typing import Any, Iterable
 
+import static_analysis_registry
+
 
 SCHEMA = "code-reader-static-metrics/v1"
-PROFILE_PATH = Path(__file__).with_name("static_analysis_profiles.json")
 SUPPORTED = "SUPPORTED"
 NOT_AVAILABLE = "NOT_AVAILABLE"
 PARSE_ERROR = "PARSE_ERROR"
@@ -41,16 +42,15 @@ _LANGUAGE_ALIASES = {
 }
 
 
-def load_profiles() -> dict[str, dict[str, Any]]:
-    """Return the checked-in analysis profiles without mutating user state."""
-    contents = json.loads(PROFILE_PATH.read_text(encoding="utf-8"))
-    return contents["profiles"]
+def load_profiles(cache_root: Path | None = None) -> dict[str, dict[str, Any]]:
+    """Return built-in profiles plus explicitly provisioned user profiles."""
+    return static_analysis_registry.load_profiles(cache_root)
 
 
-def language_for_path(path: str | Path) -> str | None:
+def language_for_path(path: str | Path, cache_root: Path | None = None) -> str | None:
     """Return the registered language for *path*, or ``None`` when unknown."""
     suffix = Path(path).suffix.lower()
-    for language, profile in load_profiles().items():
+    for language, profile in load_profiles(cache_root).items():
         if suffix in profile.get("extensions", []):
             return language
     return None

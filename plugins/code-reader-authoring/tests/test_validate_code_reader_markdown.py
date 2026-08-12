@@ -4,15 +4,29 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 
 SCRIPTS_DIRECTORY = Path(__file__).resolve().parents[1] / "scripts"
 sys.path.insert(0, str(SCRIPTS_DIRECTORY))
 
 import validate_code_reader_markdown
+import bootstrap_static_analysis
 
 
 class ValidateCodeReaderMarkdownTests(unittest.TestCase):
+    def test_unregistered_language_preserves_provision_required_status(self) -> None:
+        with patch.object(
+            bootstrap_static_analysis,
+            "ensure",
+            return_value={"status": "PROVISION_REQUIRED", "reason": "profile approval is required"},
+        ):
+            result = validate_code_reader_markdown.analyze_source_scope(
+                "src/example.kt", "fun main() = Unit\n", 1, 1
+            )
+
+        self.assertEqual(result["status"], "PROVISION_REQUIRED")
+
     def test_source_page_with_one_range_is_valid(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
             root = Path(temporary_directory)

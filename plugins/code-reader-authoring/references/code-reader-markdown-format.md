@@ -44,7 +44,7 @@ The PDF renderer labels each concrete explanation page and its matching Source o
 
 - For a Source page, it parses the referenced source with the registered AST adapter. If the range starts across several declarations, it lists every affected function or type definition; when it lies inside nested definitions, it shows the innermost one.
 - For a Diff page, it parses the resolved before/after source reconstructed from the patch: `@new` selects after, `@old` selects before, and a comparison without a side prefers after then before. A focused reference uses its focused range rather than the full hunk.
-- Tree-sitter parsers are prepared automatically from the registered lock into the user cache when first needed. If source resolution, parser preparation, or AST parsing fails, omit the label; do not invent a range label or fail PDF generation.
+- Tree-sitter parsers are prepared automatically from a built-in pinned profile or an explicitly approved user-local profile when first needed. Each grammar is isolated with its runtime and the installed wheel ABI must be within 13 through 15. If source resolution, parser preparation, ABI verification, or AST parsing fails, omit the label; do not invent a range label or fail PDF generation. A missing profile returns `PROVISION_REQUIRED`; it must be proposed and approved through `provision-code-reader-parser`, never installed during PDF generation.
 - `Target:` is a manual override. Keep its name as it appears in code, and do not use it merely to repeat a definition that the renderer can already identify.
 
 ## Code Explanation
@@ -82,12 +82,12 @@ The PDF renderer labels each concrete explanation page and its matching Source o
 
 ## Static Page Metrics
 
-Run the registered static-analysis bootstrap before asking a reviewer. It may install only dependencies named in the repository's language profile and lock; it must reject an unregistered dependency or a version that does not match the lock. Do not select, install, or upgrade a parser or analyzer ad hoc.
+Run the registered static-analysis bootstrap before asking a reviewer. It may install only a repository-pinned built-in profile or a previously approved user-local profile. A missing language returns `PROVISION_REQUIRED`; use `provision-code-reader-parser` to propose the candidate and obtain approval before provisioning it. Do not select, install, or upgrade a parser or analyzer ad hoc during validation.
 
 The page inventory records the analysis result for each resolved Source range and for both resolvable old/new Diff sides:
 
 - `V(G)` and `peak_live_bindings` are deterministic only when the displayed range is a full definition or a complete structural SESE subregion within one definition. A selected range must align with complete syntax and control-flow boundaries; never substitute the enclosing function's metrics for a non-structural partial range.
-- `analysis_region.kind` is `definition` or `sese_region`. A `sese_region` records its owning definition, decision nodes, and peak binding evidence. Python and Lua use direct adapters; Tree-sitter languages use only their registered, lock-pinned grammar profiles.
+- `analysis_region.kind` is `definition` or `sese_region`. A `sese_region` records its owning definition, decision nodes, and peak binding evidence. Python and Lua use direct adapters; Tree-sitter languages use their registered built-in grammar profile or a previously approved user-local profile.
 - `peak_live_bindings` is a local-binding proxy. It excludes heap/object fields, globals, aliases, dynamic calls, and values needed only outside a selected SESE region. Treat a low static value as reviewer input, not proof that the page is safe.
 - A Diff resolver first uses the old/new blob revision and path, then verifies hunk lines and context. For an unresolved side, the inventory records `hunk_fallback`, the attempted revision, and the reason instead of inventing a source range.
 
@@ -282,7 +282,7 @@ Set `CHANGES_REQUIRED` for any misplaced dependency, source-order-only sequencin
 
 ## Validation
 
-Run the shared validator and emit an inventory after writing or editing a document. This command performs the registered, locked dependency bootstrap before collecting static metrics:
+Run the shared validator and emit an inventory after writing or editing a document. This command performs the registered built-in or approved user-profile dependency bootstrap before collecting static metrics:
 
 ```powershell
 python plugins/code-reader-authoring/scripts/validate_code_reader_markdown.py --project-root <repo-root> --emit-page-inventory <inventory.json> <markdown-file>

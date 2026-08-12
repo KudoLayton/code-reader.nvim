@@ -654,7 +654,7 @@ def analyze_source_scope(path: str, text: str, start_line: int, end_line: int) -
     bootstrap = bootstrap_static_analysis.ensure(language)
     if bootstrap.get("status") != "READY":
         return {
-            "status": "NOT_AVAILABLE",
+            "status": bootstrap.get("status", "NOT_AVAILABLE"),
             "reason": bootstrap.get("reason", "registered static-analysis dependencies are unavailable"),
             "reason_code": "ANALYZER_UNAVAILABLE",
             "fallback_required": True,

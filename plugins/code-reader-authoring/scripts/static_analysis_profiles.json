@@ -4,6 +4,7 @@
     "c": {
       "extensions": [".c", ".h"],
       "backend": "tree-sitter-v1",
+      "runtime_family": "tree-sitter-abi-13-15",
       "grammar_module": "tree_sitter_c",
       "definition_nodes": ["function_definition"],
       "target_definition_nodes": {"function": ["function_definition"], "type": ["type_definition", "struct_specifier", "union_specifier", "enum_specifier"]},
@@ -15,6 +16,7 @@
     "cpp": {
       "extensions": [".cc", ".cpp", ".cxx", ".c++", ".hh", ".hpp", ".hxx"],
       "backend": "tree-sitter-v1",
+      "runtime_family": "tree-sitter-abi-13-15",
       "grammar_module": "tree_sitter_cpp",
       "definition_nodes": ["function_definition", "lambda_expression"],
       "target_definition_nodes": {"function": ["function_definition", "lambda_expression"], "type": ["class_specifier", "struct_specifier", "union_specifier", "enum_specifier", "alias_declaration", "type_definition"]},
@@ -26,6 +28,7 @@
     "go": {
       "extensions": [".go"],
       "backend": "tree-sitter-v1",
+      "runtime_family": "tree-sitter-abi-13-15",
       "grammar_module": "tree_sitter_go",
       "definition_nodes": ["function_declaration", "method_declaration", "func_literal"],
       "target_definition_nodes": {"function": ["function_declaration", "method_declaration", "func_literal"], "type": ["type_spec"]},
@@ -37,6 +40,7 @@
     "javascript": {
       "extensions": [".js", ".mjs", ".cjs", ".jsx"],
       "backend": "tree-sitter-v1",
+      "runtime_family": "tree-sitter-abi-13-15",
       "grammar_module": "tree_sitter_javascript",
       "definition_nodes": ["function_declaration", "function_expression", "arrow_function", "method_definition", "generator_function_declaration"],
       "target_definition_nodes": {"function": ["function_declaration", "function_expression", "arrow_function", "method_definition", "generator_function_declaration"], "type": ["class_declaration"]},
@@ -58,6 +62,7 @@
     "rust": {
       "extensions": [".rs"],
       "backend": "tree-sitter-v1",
+      "runtime_family": "tree-sitter-abi-13-15",
       "grammar_module": "tree_sitter_rust",
       "definition_nodes": ["function_item", "closure_expression"],
       "target_definition_nodes": {"function": ["function_item", "closure_expression"], "type": ["struct_item", "enum_item", "trait_item", "type_item", "union_item"]},
@@ -69,6 +74,7 @@
     "typescript": {
       "extensions": [".ts", ".tsx", ".mts", ".cts"],
       "backend": "tree-sitter-v1",
+      "runtime_family": "tree-sitter-abi-13-15",
       "grammar_module": "tree_sitter_typescript",
       "grammar_symbol_by_extension": {
         ".ts": "language_typescript",
