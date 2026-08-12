@@ -209,8 +209,8 @@ def validate_page_structure(
             errors.append(f"section starting at line {section_start} has a Source directive in a diff document")
         if directives["cursor"]:
             errors.append(f"section starting at line {section_start}: Cursor is only valid for code-reader documents")
-        if not directives["diff"]:
-            errors.append(f"section starting at line {section_start} has no Diff directive")
+        if len(directives["diff"]) != 1:
+            errors.append(f"section starting at line {section_start} must contain exactly one Diff directive")
         if any(index not in preamble for index in directives["diff"]):
             errors.append(f"section starting at line {section_start} must place Diff directives in the metadata preamble")
 

@@ -33,7 +33,7 @@ version: 1
 Every concrete page has a metadata preamble immediately after its opening heading and before prose, diagrams, or child headings.
 
 - A `type: code-reader` page has exactly one continuous `Source:` reference in that preamble. Its optional `Cursor:` reference must name the same path and stay inside that Source range.
-- A `type: code-reader-diff` page has one or more `Diff:` references in that preamble. Multiple hunks are allowed only when every resolved range belongs to one logical definition. A rename is allowed only when the old and new ranges identify that same definition.
+- A `type: code-reader-diff` page has exactly one `Diff:` reference in that preamble. An unmodified hunk reference may compare old and new code, while a side-specific reference narrows the page to one old or new range. Explain another hunk or range on a separate page.
 - A page must not contain an additional `Source:` or `Diff:` reference after the preamble, and a document type must not use the other reference kind.
 - A page may explain a function, method, type, class, named declaration, or one top-level declaration or statement. It must not combine sibling definitions, multiple class members, or multiple top-level statements. A class container page is allowed only for its declaration or contract, not to explain several members.
 
@@ -56,7 +56,7 @@ Every concrete page has a metadata preamble immediately after its opening headin
 - The front page should summarize the change set: purpose, behavioral impact, affected files or modules, and suggested review flow.
 - Explain individual hunks in step pages, not on the front page.
 - Use step-level Mermaid diagrams only when they make a specific hunk or cross-file relationship easier to review.
-- Write references as `Diff: path#Hn`, where `Hn` is the file-local hunk number from the unified diff. A page may have more than one such reference only under the single-definition rule above.
+- Write one reference as `Diff: path#Hn`, where `Hn` is the file-local hunk number from the unified diff. Use a separate page for every additional hunk or focused range.
 - For large hunks or whole-file additions, split the explanation with side-specific focus ranges:
   - `Diff: path#Hn@old:L10-L18`
   - `Diff: path#Hn@new:L20-L40`
@@ -141,7 +141,7 @@ For every page, apply the following measurement procedure and record evidence in
 
 ### Definition and child-heading scope
 
-1. Verify that all resolved references lie inside one allowed definition. A hunk that crosses definitions must use a focused old/new range or become separate pages.
+1. Verify that the resolved reference lies inside one allowed definition. A hunk that crosses definitions must use a focused old/new range or become separate pages.
 2. Evaluate every H2+ heading by removing that heading and its explanation hypothetically. If doing so allows the page's Source or resolved Diff scope to become smaller, classify it as `scope_expanding` and require a new `---` page. Headings that explain the same range's input, output, invariant, or control order are `conceptual`.
 3. An unresolved Diff uses `hunk_fallback`: inspect the hunk body, context, and header only. If these do not establish one definition with sufficient confidence, return `CHANGES_REQUIRED`, never PASS.
 

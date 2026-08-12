@@ -13,7 +13,7 @@ Read `../../references/code-reader-markdown-format.md` before writing.
 2. If the user provides references copied with `:CodeReaderCopyRef`, use those `path#Hn` or `path#Hn@old/new:Lx-Ly` ranges as direct diff targets unless the user asks for a broader review.
 3. Identify files, file-local hunk ids, changed behavior, and runtime execution order; do not use patch order as the reading order when it obscures behavior.
 4. Draft a `type: code-reader-diff` markdown file with a front page and numbered hunk explanation steps.
-5. Put one or more `Diff: path#Hn` or side-specific range references in each concrete page's metadata preamble, immediately after its opening heading. Multiple references are valid only when their resolved old/new scopes belong to one logical definition.
+5. Put exactly one `Diff: path#Hn` or side-specific range reference in each concrete page's metadata preamble, immediately after its opening heading. Use a separate `---` page for every additional hunk or focused range.
 6. Use `@new` only when the page's primary walkthrough is the post-change code or behavior, and `@old` only when it is removed or replaced pre-change code or behavior. For a balanced old/new comparison, use an unmodified `Diff: path#Hn`; never choose a side only to narrow the visible range.
 7. Split large hunks, whole-file additions, dense rewrites, or subroutines into nested focused range pages. Each page's Diff scope must contain only the change its prose explains and must not cross a definition boundary.
 8. Cover every hunk unless the user explicitly asks for a partial explanation.
