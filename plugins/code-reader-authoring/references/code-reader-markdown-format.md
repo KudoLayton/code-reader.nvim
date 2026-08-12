@@ -90,7 +90,7 @@ An unavailable profile, parser failure, unresolved Diff source, or a non-SESE pa
 
 ## Page Scope Review v1
 
-After static validation passes without an immediate split, ask one read-only subagent to perform Page Scope Review. Give it the project root, Markdown path, document type, page inventory, related source files or revisions, and the diff path with its complete `path#Hn` list when applicable. The subagent must not edit files.
+After static validation passes without an immediate split, ask one read-only `code_reader_page_scope_reviewer` subagent to perform Page Scope Review. Configure it as described in [Page Scope Reviewer Configuration](#page-scope-reviewer-configuration), then give it the project root, Markdown path, document type, page inventory, related source files or revisions, and the diff path with its complete `path#Hn` list when applicable. The subagent must not edit files.
 
 The reviewer must inspect pages in document order and return exactly one YAML report in a fenced `yaml` block with this shape:
 
@@ -227,6 +227,48 @@ At each cognitively demanding execution point--immediately before a branch, outp
 For a resolved Diff, use the more demanding old/new measurement. For `hunk_fallback`, count only supported lower bounds; if a lower bound triggers a rule, require a split. A required fallback with no exact review measurement, a Diff `focus_alignment` verdict other than `MATCH`, an unknown safe definition boundary, or an unknown cognitive load requires `CHANGES_REQUIRED`. The writing agent fixes every non-PASS page, then re-runs the static validator and a fresh Page Scope Review until the report is `overall_verdict: PASS`.
 
 For diff documents, the report must also include a `hunk_coverage` table and list uncovered hunks. All hunks remain required unless the user explicitly requested a partial explanation.
+
+## Page Scope Reviewer Configuration
+
+The reviewer is intentionally separate from the writing agent so its model and reasoning effort do not silently inherit a high-cost parent setting. The packaged template is `code-reader-page-scope-reviewer.toml` in this directory and uses `gpt-5.6-luna` with `medium` reasoning effort in read-only mode.
+
+Before asking for Page Scope Review, look for this file in either location:
+
+- `<project-root>/.codex/agents/code_reader_page_scope_reviewer.toml`
+- `%USERPROFILE%/.codex/agents/code_reader_page_scope_reviewer.toml`
+
+When neither file exists, tell the user that the dedicated reviewer is not configured, recommend copying the packaged template to one of those locations, and explain that a new Codex thread may be needed to load it. Do not silently use the writing agent's model and reasoning effort. Ask whether to configure the reviewer, run one explicit read-only `gpt-5.6-luna` / `medium` review when the runtime supports explicit spawn settings, or skip Page Scope Review. Do not create or modify the user's personal Codex configuration automatically.
+
+## Walkthrough Flow Review v1
+
+After the validator and Page Scope Review both report PASS, the writing agent—not a subagent—must evaluate the walkthrough as a whole. Read the front page, every concrete page in document order, the page inventory, and the referenced source or diff material. Return exactly one YAML report in a fenced `yaml` block:
+
+```yaml
+schema: code-reader-walkthrough-flow-review/v1
+document: relative/path/to/walkthrough.md
+overall_verdict: PASS # PASS | CHANGES_REQUIRED
+pages:
+  - page_id: "1"
+    execution_order:
+      predecessor: front # front | page id | null
+      successor: "1.1" # page id | null
+      evidence: ["src/example.py#L10-L34"]
+      verdict: PASS # PASS | CHANGES_REQUIRED
+    hierarchy:
+      parent_page_id: null # page id | null
+      relationship: "Introduces the request lifecycle."
+      evidence: ["The child page explains the branch executed inside this request lifecycle."]
+      verdict: PASS # PASS | CHANGES_REQUIRED
+    required_action: null
+```
+
+Evaluate every concrete page with these rules:
+
+1. Follow runtime execution, control flow, call flow, or data dependency order rather than source-file or diff order. A prerequisite page must precede the page that consumes its result.
+2. A nested page must follow its nearest shallower parent, describe a real substep of that parent, and have a heading depth consistent with the relationship. Do not skip a hierarchy level or use nesting only to group unrelated siblings.
+3. Top-level pages must form a readable sequence from entry through outcome. The front page may introduce the architecture but must state the same reading flow.
+
+Set `CHANGES_REQUIRED` for any misplaced dependency, source-order-only sequencing, misleading parent/child relationship, skipped hierarchy level, or front-page flow that disagrees with the concrete pages. When a fix changes a range, prose scope, or page count, rerun static validation and Page Scope Review before a new Flow Review. When it changes only order or heading depth, rerun Flow Review.
 
 ## Validation
 

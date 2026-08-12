@@ -20,8 +20,10 @@ Read `../../references/code-reader-markdown-format.md` before writing.
 9. Order steps by runtime execution flow, keep each page inside one definition, and split long routines or subroutines into nested `---` pages. A non-numeric child heading may organize the same scope, but it must not require a broader Source range.
 10. Run the shared validator with `--emit-page-inventory`. This bootstraps only registered, lock-pinned static-analysis dependencies and collects deterministic metrics for a full definition or a complete structural partial range.
 11. When the inventory reports an immediate split, narrow the source range and split the page before requesting any reviewer. A `fallback_required` result means the selected partial range is not structurally analyzable; do not replace it with the enclosing function's metric.
-12. Ask one read-only subagent to perform the `Page Scope Review v1` defined in `../../references/code-reader-markdown-format.md` for the remaining pages. It must measure V(G), independent concepts, and variable--value pairs for every `fallback_required` page and apply the same split thresholds.
+12. Follow the `Page Scope Reviewer Configuration` in `../../references/code-reader-markdown-format.md` before asking one read-only `code_reader_page_scope_reviewer` subagent to perform `Page Scope Review v1` for the remaining pages. If the dedicated reviewer is not configured, recommend its setup and ask whether to use one explicit `gpt-5.6-luna` / `medium` review or skip the review; never silently inherit the writing agent's model and effort.
 13. Fix every `SPLIT_REQUIRED` or `CHANGES_REQUIRED` result, then rerun static validation and a fresh Page Scope Review until the report has `overall_verdict: PASS`.
+14. Perform `Walkthrough Flow Review v1` from `../../references/code-reader-markdown-format.md` yourself after Page Scope Review passes. Do not delegate this whole-document ordering and hierarchy check to a subagent.
+15. Fix every Flow Review `CHANGES_REQUIRED` result. If a fix changes a range, prose scope, or page count, restart from static validation; otherwise rerun Flow Review until it has `overall_verdict: PASS`.
 
 ## Output Defaults
 

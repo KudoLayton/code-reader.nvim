@@ -93,6 +93,8 @@ python plugins/code-reader-authoring/scripts/validate_code_reader_markdown.py --
 
 Use `--allow-partial-diff` only when the diff walkthrough intentionally does not cover every hunk.
 
+When an authoring skill reaches Page Scope Review, it uses a dedicated read-only Codex agent named `code_reader_page_scope_reviewer`. Its packaged template uses `gpt-5.6-luna` with `medium` reasoning effort so page reviews do not silently inherit the writing chat's model and effort. Copy the template from the installed plugin's `references/code-reader-page-scope-reviewer.toml` to either `.codex/agents/code_reader_page_scope_reviewer.toml` in the project or `%USERPROFILE%\.codex\agents\code_reader_page_scope_reviewer.toml` for personal use, then start a new Codex thread. If it is not configured, the skill recommends setup and asks before using an explicit temporary reviewer or skipping the review.
+
 ### PDF Export
 
 PDF export runs independently of Neovim. It needs Node.js and either Google Chrome or Microsoft Edge; no browser download or intermediate HTML/SVG file is created.
