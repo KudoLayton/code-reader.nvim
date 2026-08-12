@@ -264,9 +264,10 @@ test("generates a side-by-side Diff PDF", async () => {
     assert.match(html, /<h2>After<\/h2>/);
     assert.match(html, /code-line--deleted/);
     assert.match(html, /code-line--added/);
-    assert.match(html, /code-line--focused/);
+    assert.match(html, /class="code-range-focus"/);
     assert.match(html, /\.code-block \{ background: #fff;/);
-    assert.match(html, /\.code-line--focused \{ box-shadow: inset 4px 0 #2563eb, inset 0 0 0 1px #2563eb;/);
+    assert.match(html, /\.code-range-focus \{ border: 1px solid #2563eb; border-left: 4px solid #2563eb;/);
+    assert.doesNotMatch(html, /code-line--focused/);
     const fullHunkSection = html.match(
       /<header class="code-header">\n<span>Diff H1<\/span><strong>src\/app\.lua<\/strong>[\s\S]*?<\/section>\n<section class="pdf-section/,
     )?.[0];

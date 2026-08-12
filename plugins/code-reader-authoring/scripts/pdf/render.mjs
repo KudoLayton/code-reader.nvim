@@ -124,18 +124,44 @@ async function highlightRows(rows, filePath) {
 
 async function renderCodeRows(rows, filePath) {
   const highlighted = await highlightRows(rows, filePath);
-  return rows
+  const lines = rows
     .map((row, index) => {
-      const focusClass = row.focused ? " code-line--focused" : "";
       return [
-        `<div class="code-line${focusClass}">`,
+        '<div class="code-line">',
         `<span class="line-number">${row.number ?? ""}</span>`,
         '<span class="diff-marker"></span>',
         `<code>${highlighted[index] || "&nbsp;"}</code>`,
         "</div>",
       ].join("");
-    })
-    .join("\n");
+    });
+  return wrapFocusedRange(rows, lines, true);
+}
+
+function wrapFocusedRange(rows, lines, showFocusedRange) {
+  if (!showFocusedRange) {
+    return lines.join("\n");
+  }
+  const firstFocusedIndex = rows.findIndex((row) => row.focused);
+  if (firstFocusedIndex < 0) {
+    return lines.join("\n");
+  }
+  let lastFocusedIndex = firstFocusedIndex;
+  for (let index = firstFocusedIndex + 1; index < rows.length; index += 1) {
+    if (rows[index].focused) {
+      lastFocusedIndex = index;
+    }
+  }
+  const output = [];
+  for (let index = 0; index < lines.length; index += 1) {
+    if (index === firstFocusedIndex) {
+      output.push('<div class="code-range-focus">');
+    }
+    output.push(lines[index]);
+    if (index === lastFocusedIndex) {
+      output.push("</div>");
+    }
+  }
+  return output.join("\n");
 }
 
 function screenPageAttributes(screenPageName) {
@@ -192,12 +218,9 @@ async function renderDiffSection(reference, hunk, analysis, padding, screenPageN
 
 async function renderDiffRows(rows, filePath, showFocusedRange) {
   const highlighted = await highlightRows(rows, filePath);
-  return rows
+  const lines = rows
     .map((row, index) => {
       const classes = ["code-line", `code-line--${row.kind}`];
-      if (showFocusedRange && row.focused) {
-        classes.push("code-line--focused");
-      }
       return [
         `<div class="${classes.join(" ")}">`,
         `<span class="line-number">${row.number ?? ""}</span>`,
@@ -205,8 +228,8 @@ async function renderDiffRows(rows, filePath, showFocusedRange) {
         `<code>${highlighted[index] || "&nbsp;"}</code>`,
         "</div>",
       ].join("");
-    })
-    .join("\n");
+    });
+  return wrapFocusedRange(rows, lines, showFocusedRange);
 }
 
 function renderExplanationSection(step, index, total) {
@@ -333,9 +356,9 @@ h1 { color: #0f172a; font-size: 24pt; line-height: 1.25; margin: 8mm 0 7mm; }
 .code-header span:last-child { margin-left: auto; color: #475569; }
 .code-block { background: #fff; border: 1px solid #cbd5e1; border-top: 0; padding: 2mm 0; }
 .code-line { display: grid; grid-template-columns: 14mm 5mm minmax(0, 1fr); align-items: start; min-height: 1.55em; background: #fff; font-size: 8.5pt; line-height: 1.55; break-inside: avoid; }
-.code-line--focused { box-shadow: inset 4px 0 #2563eb, inset 0 0 0 1px #2563eb; }
+.code-range-focus { border: 1px solid #2563eb; border-left: 4px solid #2563eb; border-radius: 2px; overflow: hidden; }
 .line-number { color: #6b7280; padding-right: 2mm; text-align: right; user-select: none; }
-.code-line--focused .line-number, .code-line--focused .diff-marker { color: #1d4ed8; font-weight: 700; }
+.code-range-focus .line-number, .code-range-focus .diff-marker { color: #1d4ed8; font-weight: 700; }
 .code-line code { color: #1f2937; font-family: inherit; white-space: pre-wrap; overflow-wrap: anywhere; min-width: 0; padding-right: 3mm; }
 .diff-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 5mm; }
 .diff-grid h2 { color: #334155; font: 700 10pt "Malgun Gothic", "Segoe UI", sans-serif; margin: 3mm 0 2mm; }
