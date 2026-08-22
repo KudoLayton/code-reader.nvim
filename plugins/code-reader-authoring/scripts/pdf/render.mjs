@@ -433,7 +433,45 @@ function renderSemanticPositionMap(document, step) {
   ].join("\n");
 }
 
-function renderExplanationSection(step, index, total, screenPageName, targets, inlineMaps = [], positionMap = "") {
+function parentStep(document, step) {
+  const parentId = step.metadata?.parent;
+  if (typeof parentId !== "string" || !parentId) return undefined;
+  return document.steps.find((candidate) => candidate.metadata?.id === parentId);
+}
+
+function childSteps(document, step) {
+  const stepId = step.metadata?.id;
+  if (typeof stepId !== "string" || !stepId) return [];
+  return document.steps.filter((candidate) => candidate.metadata?.parent === stepId);
+}
+
+function renderConceptualPosition(document, step) {
+  const isModel = step.metadata?.kind === "model";
+  const path = [];
+  const seen = new Set();
+  let current = step;
+  while (current && !seen.has(current)) {
+    seen.add(current);
+    path.unshift(current);
+    current = parentStep(document, current);
+  }
+  if (!isModel && path.length === 1) return "";
+  const overview = document.steps.find((candidate) => candidate.kind === "front_page");
+  const labels = [overview?.title, ...path.map((item) => item.title)].filter(Boolean);
+  const model = step.metadata?.hierarchy ?? {};
+  const children = isModel ? childSteps(document, step) : [];
+  return [
+    '<aside class="conceptual-position">',
+    '<strong>Conceptual position</strong>',
+    `<span>Path: ${escapeHtml(labels.join(" › "))}</span>`,
+    isModel && model.contract ? `<span>Shared contract: ${escapeHtml(String(model.contract))}</span>` : "",
+    isModel && model.decomposition ? `<span>Why these pages are separate: ${escapeHtml(String(model.decomposition))}</span>` : "",
+    isModel && children.length ? `<span>Direct child scopes: ${escapeHtml(children.map((child) => child.title).join(" · "))}</span>` : "",
+    "</aside>",
+  ].filter(Boolean).join("\n");
+}
+
+function renderExplanationSection(step, index, total, screenPageName, targets, inlineMaps = [], conceptualPosition = "", positionMap = "") {
   return [
     `<section class="pdf-section pdf-section--explanation"${screenPageAttributes(screenPageName, "explanation")}>`,
     `<div class="explanation-content"${screenContentAttributes(screenPageName)}>`,
@@ -442,6 +480,7 @@ function renderExplanationSection(step, index, total, screenPageName, targets, i
     renderTargetDefinition(targets),
     "</header>",
     `<h1>${escapeHtml(step.title)}</h1>`,
+    conceptualPosition,
     positionMap,
     ...inlineMaps,
     '<article class="markdown-body">',
@@ -613,6 +652,7 @@ export async function renderCodeReaderHtml(document, options) {
       }
     }
     step.html = evidenceLinks(await markdownToHtml([step.body, semanticModelMarkdown(step.metadata)].filter(Boolean).join("\n\n")), step);
+    const conceptualPosition = renderConceptualPosition(document, step);
     const positionMap = renderSemanticPositionMap(document, step);
     sections.push(
       renderExplanationSection(
@@ -622,6 +662,7 @@ export async function renderCodeReaderHtml(document, options) {
         nextScreenPageName("explanation"),
         pages.find((page) => page.targets?.length)?.targets,
         inlineMaps,
+        conceptualPosition,
         positionMap,
       ),
     );
@@ -664,6 +705,8 @@ html, body { margin: 0; color: #1f2937; background: #fff; font-family: "Malgun G
 .relationship-map figcaption { margin-bottom: 3mm; color: #334155; font-size: 9.5pt; }
 .relationship-map-svg { display: grid; place-items: center; min-height: 58mm; }
 .relationship-map-svg svg { max-width: 100%; max-height: 88mm; width: auto; height: auto; }
+.conceptual-position { display: grid; gap: 1.5mm; margin: 0 0 6mm; padding: 3.5mm 4mm; border-left: 3px solid #4f46e5; background: #f5f3ff; color: #312e81; break-inside: avoid; font-size: 9.5pt; }
+.conceptual-position strong { color: #312e81; }
 .semantic-position-map { margin: 0 0 6mm; padding: 3.5mm 4mm; border: 1px solid #bfdbfe; background: #f8fbff; break-inside: avoid; }
 .semantic-position-map figcaption { display: flex; gap: 3mm; align-items: baseline; margin-bottom: 2.5mm; color: #334155; font-size: 9.5pt; }
 .semantic-position-map figcaption strong { color: #1e3a8a; }

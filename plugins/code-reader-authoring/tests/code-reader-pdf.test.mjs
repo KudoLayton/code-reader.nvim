@@ -184,6 +184,41 @@ test("renders v2 numbered source and sketch evidence after its explanation", asy
   }
 });
 
+test("renders conceptual position for model parents and their child stages", async () => {
+  const temporaryDirectory = await mkdtemp(path.join(os.tmpdir(), "code-reader-conceptual-position-"));
+  const markdownPath = path.join(temporaryDirectory, "walkthrough.md");
+  await writeFile(
+    markdownPath,
+    [
+      "---", "type: code-reader", "version: 2", "feature: request-validation", "---",
+      "# Overview", "```code-reader", "kind: overview", "id: request-validation",
+      "question: What validates a request?", "state:", "  status: not_applicable", "  reason: The overview is descriptive.",
+      "responsibility:", "  status: applicable", "  items:", "    - owner: app.handle", "      action: Coordinate validation", "```",
+      "---", "# Validation model", "```code-reader", "kind: model", "id: validation-model",
+      "question: How do validation parts establish the request contract?", "state:", "  status: not_applicable", "  reason: The model is descriptive.",
+      "responsibility:", "  status: applicable", "  items:", "    - owner: validator", "      action: Establish the request contract",
+      "hierarchy:", "  contract: A validated request is safe to dispatch.", "  decomposition: Syntax and policy have separate local rules.", "```",
+      "---", "# Parse syntax", "```code-reader", "kind: stage", "id: parse-syntax", "parent: validation-model",
+      "question: How is syntax accepted?", "trigger: Validation starts", "state:", "  status: not_applicable", "  reason: The example is conceptual.",
+      "responsibility:", "  status: applicable", "  items:", "    - owner: parser", "      action: Check syntax", "failure:", "  status: not_applicable", "  reason: The example omits failures.", "```",
+      "---", "# Check policy", "```code-reader", "kind: stage", "id: check-policy", "parent: validation-model",
+      "question: How is policy accepted?", "trigger: Syntax succeeds", "state:", "  status: not_applicable", "  reason: The example is conceptual.",
+      "responsibility:", "  status: applicable", "  items:", "    - owner: policy", "      action: Check policy", "failure:", "  status: not_applicable", "  reason: The example omits failures.", "```",
+    ].join("\n"),
+    "utf8",
+  );
+  try {
+    const document = parseCodeReaderDocument(await readFile(markdownPath, "utf8"), { markdownPath });
+    const html = await renderCodeReaderHtml(document, { root: temporaryDirectory, padding: 0 });
+    assert.match(html, /Conceptual position/);
+    assert.match(html, /Overview › Validation model › Parse syntax/);
+    assert.match(html, /Shared contract: A validated request is safe to dispatch\./);
+    assert.match(html, /Direct child scopes: Parse syntax · Check policy/);
+  } finally {
+    await rm(temporaryDirectory, { recursive: true, force: true });
+  }
+});
+
 test("renders automatic and manual target definitions on explanation and code pages", async () => {
   const temporaryDirectory = await mkdtemp(path.join(os.tmpdir(), "code-reader-target-definitions-"));
   const sourcePath = path.join(temporaryDirectory, "request.py");

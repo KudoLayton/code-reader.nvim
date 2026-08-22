@@ -663,6 +663,7 @@ local function parse_step(section, index, is_v2)
   local depth = heading and heading.level or count_numeric_depth(id)
   local content, content_line_map = section_content(step_lines, heading and heading.index)
   local evidence, evidence_by_id = normalize_evidence(metadata)
+  local parent_id = is_v2 and type(metadata.parent) == "string" and metadata.parent or nil
   local sources = parse_sources(step_texts)
   local diff_refs = parse_diff_refs(step_texts)
   for _, item in ipairs(evidence) do
@@ -709,6 +710,7 @@ local function parse_step(section, index, is_v2)
     sources = sources,
     diff_refs = diff_refs,
     metadata = metadata,
+    parent_id = parent_id,
     map_anchor = metadata.map_anchor,
     metadata_error = metadata_error,
     evidence = evidence,
@@ -732,6 +734,14 @@ function M.parse(text, opts)
     step_by_id[step.id] = index
     if step.kind == "front_page" then
       front_page_index = index
+    end
+  end
+
+  for _, step in ipairs(steps) do
+    if step.parent_id and step_by_id[step.parent_id] then
+      local parent = steps[step_by_id[step.parent_id]]
+      parent.child_ids = parent.child_ids or {}
+      table.insert(parent.child_ids, step.id)
     end
   end
 

@@ -52,6 +52,8 @@ Use `]r` and `[r` to change stages. When a stage or overview has a purpose-label
 
 For a v2 walkthrough with an overview execution map, each anchored stage also shows an **Execution position** minimap directly below its title. It emphasizes the stage's current semantic scope and keeps only immediate incoming or outgoing handoffs visible around it; it is orientation context, not reading-progress tracking.
 
+When a v2 walkthrough uses explicit model parents, every model and child stage also shows a **Conceptual position** path. A model page lists its shared contract, why its children are separate, and the direct child scopes; a runtime child keeps that path alongside its Execution position minimap. This distinguishes its place in the reader's mental model from its place in execution order.
+
 `:CodeReaderEditSketch` passes the selected sketch's editable `.excalidraw` file—not its SVG preview—to the configured editor command.
 
 ```lua

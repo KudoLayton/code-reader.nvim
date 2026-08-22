@@ -238,4 +238,43 @@ eq(v2_doc.steps[2].evidence[2].editable_path, ".code_reader/assets/request-valid
 eq(v2_doc.steps[2].evidence_by_id[2].text_model.nodes[2].owner, "dispatcher", "v2 sketch text model")
 eq(v2_doc.steps[2].content:find("```code%-reader", 1), nil, "v2 metadata fence hidden from content")
 
+local hierarchy_sample = [[
+---
+type: code-reader
+version: 2
+feature: hierarchy
+---
+# Overview
+```code-reader
+kind: overview
+id: hierarchy
+```
+---
+# Shared validation model
+```code-reader
+kind: model
+id: validation-model
+```
+---
+# Parse input
+```code-reader
+kind: stage
+id: parse-input
+parent: validation-model
+```
+---
+# Apply policy
+```code-reader
+kind: stage
+id: apply-policy
+parent: validation-model
+```
+]]
+
+local hierarchy_doc = parser.parse(hierarchy_sample, { path = ".code_reader/hierarchy.md" })
+eq(hierarchy_doc.steps[3].parent_id, "validation-model", "v2 explicit parent id")
+eq(#hierarchy_doc.steps[2].child_ids, 2, "v2 explicit children")
+eq(hierarchy_doc.steps[2].child_ids[1], "parse-input", "first explicit child")
+eq(hierarchy_doc.steps[2].child_ids[2], "apply-policy", "second explicit child")
+
 print("parser_spec: ok")

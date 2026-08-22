@@ -61,10 +61,30 @@ vim.fn.writefile({
   "```",
   "The execution map is [1](code-reader://evidence/1).",
   "---",
+  "# Request parsing model",
+  "```code-reader",
+  "kind: model",
+  "id: request-parsing-model",
+  "question: How do the parsing responsibilities establish a decoded request?",
+  "state:",
+  "  status: not_applicable",
+  "  reason: The model summarizes its children.",
+  "responsibility:",
+  "  status: applicable",
+  "  items:",
+  "    - owner: request.parse",
+  "      action: Establish the decoded request contract",
+  "hierarchy:",
+  "  contract: Decoded requests have canonical fields.",
+  "  decomposition: Parsing and ownership are easier to inspect separately.",
+  "```",
+  "The model gives the shared contract.",
+  "---",
   "# 1. Parse request",
   "```code-reader",
   "kind: stage",
   "id: parse-request",
+  "parent: request-parsing-model",
   "map_anchor:",
   "  map: 1",
   "  nodes:",
@@ -128,10 +148,18 @@ vim.cmd("CodeReaderOpen " .. vim.fn.fnameescape(walkthrough))
 local overview_state = code_reader.state()
 eq(vim.api.nvim_win_get_buf(overview_state.windows.code) == overview_state.buffers.sketch, true, "overview execution map opens by default")
 code_reader.next()
+local model_state = code_reader.state()
+local model_text = table.concat(vim.api.nvim_buf_get_lines(model_state.buffers.explanation, 0, -1, false), "\n")
+eq(model_text:find("## Conceptual position", 1, true) ~= nil, true, "model conceptual position heading")
+eq(model_text:find("Shared contract", 1, true) ~= nil, true, "model shared contract")
+eq(model_text:find("Direct child scopes", 1, true) ~= nil, true, "model child scopes")
+code_reader.next()
 local state = code_reader.state()
 eq(vim.api.nvim_win_get_buf(state.windows.code) == state.buffers.sketch, true, "handoff map opens by default")
 local explanation_text = table.concat(vim.api.nvim_buf_get_lines(state.buffers.explanation, 0, -1, false), "\n")
 eq(explanation_text:find("## Mental model", 1, true) ~= nil, true, "stage mental model heading")
+eq(explanation_text:find("## Conceptual position", 1, true) ~= nil, true, "stage conceptual position heading")
+eq(explanation_text:find("Request parsing model", 1, true) ~= nil, true, "stage conceptual parent")
 eq(explanation_text:find("## Execution position", 1, true) ~= nil, true, "stage execution position heading")
 eq(explanation_text:find("Current explanation scope", 1, true) ~= nil, true, "stage execution position scope")
 eq(explanation_text:find("### State changes", 1, true) ~= nil, true, "stage state changes heading")

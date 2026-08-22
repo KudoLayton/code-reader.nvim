@@ -860,6 +860,11 @@ local function parent_step(state, step)
     return nil
   end
 
+  if tostring((state.doc.frontmatter or {}).version or "") == "2" then
+    local parent_index = step.parent_id and state.doc.step_by_id and state.doc.step_by_id[step.parent_id] or nil
+    return parent_index and state.doc.steps[parent_index] or nil
+  end
+
   local parent_id = step.id:match("^(.+)%.%d+$")
   if parent_id and state.doc.step_by_id then
     local parent_index = state.doc.step_by_id[parent_id]
@@ -881,6 +886,15 @@ end
 
 local function child_steps(state, step)
   local children = {}
+  if tostring((state.doc.frontmatter or {}).version or "") == "2" then
+    for _, child_id in ipairs(step.child_ids or {}) do
+      local child_index = state.doc.step_by_id and state.doc.step_by_id[child_id] or nil
+      if child_index then
+        table.insert(children, state.doc.steps[child_index])
+      end
+    end
+    return children
+  end
   local child_depth = (step.depth or 1) + 1
 
   for index = step.index + 1, #state.doc.steps do
@@ -894,6 +908,45 @@ local function child_steps(state, step)
   end
 
   return children
+end
+
+local function append_conceptual_position(lines, map, state, step)
+  local parent = parent_step(state, step)
+  local is_model = step.metadata and step.metadata.kind == "model"
+  if not parent and not is_model then
+    return
+  end
+
+  local path = {}
+  local current = step
+  while current do
+    table.insert(path, 1, current)
+    current = parent_step(state, current)
+  end
+  local overview = state.doc.front_page_index and state.doc.steps[state.doc.front_page_index] or nil
+  local labels = {}
+  if overview then
+    table.insert(labels, step_link(overview))
+  end
+  for _, item in ipairs(path) do
+    table.insert(labels, step_link(item))
+  end
+
+  append_mapped_line(lines, map, "")
+  append_mapped_line(lines, map, "## Conceptual position")
+  append_mapped_line(lines, map, "")
+  append_mapped_line(lines, map, "Path: " .. table.concat(labels, " › "))
+
+  if is_model then
+    local hierarchy = step.metadata.hierarchy or {}
+    append_mapped_line(lines, map, "- Shared contract: " .. tostring(hierarchy.contract or ""))
+    append_mapped_line(lines, map, "- Why these pages are separate: " .. tostring(hierarchy.decomposition or ""))
+    local children = child_steps(state, step)
+    append_mapped_line(lines, map, "- Direct child scopes:")
+    for _, child in ipairs(children) do
+      append_mapped_line(lines, map, "  - " .. step_link(child))
+    end
+  end
 end
 
 local function append_navigation(lines, state, step, source_ref)
@@ -1195,6 +1248,7 @@ function M.render_explanation(state)
 
     local markdown_lines, markdown_map = render_markdown_lines_with_map(step.content, step.content_line_map, state)
     append_mapped_lines(lines, map, markdown_lines, markdown_map)
+    append_conceptual_position(lines, map, state, step)
     append_execution_position(lines, map, state.doc, step)
     append_semantic_model(lines, map, step)
 
@@ -1243,6 +1297,7 @@ function M.render_explanation(state)
 
   local markdown_lines, markdown_map = render_markdown_lines_with_map(step.content, step.content_line_map, state)
   append_mapped_lines(lines, map, markdown_lines, markdown_map)
+  append_conceptual_position(lines, map, state, step)
   append_execution_position(lines, map, state.doc, step)
   append_semantic_model(lines, map, step)
 
