@@ -1,4 +1,4 @@
 interface:
   display_name: "Generate Code Reader PDF"
-  short_description: "Create polished Code Reader PDFs."
-  default_prompt: "Use $generate-code-reader-pdf to render this Code Reader walkthrough as a PDF."
+  short_description: "Render validated v2 Code Reader PDFs."
+  default_prompt: "Use $generate-code-reader-pdf to render this validated v2 walkthrough as a PDF."

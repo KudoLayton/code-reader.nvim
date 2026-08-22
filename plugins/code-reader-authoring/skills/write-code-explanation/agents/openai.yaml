@@ -1,4 +1,4 @@
 interface:
   display_name: "Write Code Explanation"
-  short_description: "Create Code Reader feature walkthroughs."
-  default_prompt: "Use $write-code-explanation to create a Code Reader walkthrough for this feature."
+  short_description: "Create v2 Code Reader feature narratives."
+  default_prompt: "Use $write-code-explanation to explain this feature as a v2 Code Reader process."

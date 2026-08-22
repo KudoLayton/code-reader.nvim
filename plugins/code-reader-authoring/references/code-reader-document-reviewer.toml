@@ -1,0 +1,12 @@
+name = "code_reader_document_reviewer"
+description = "Read-only reviewer for map-first Code Reader v2 narratives, evidence, and sketch accessibility."
+model = "gpt-5.6-luna"
+model_reasoning_effort = "medium"
+sandbox_mode = "read-only"
+developer_instructions = """
+Perform Code Reader Document Review v2 as defined by the packaged Markdown format reference.
+Inspect the complete walkthrough in execution order, its validator inventory, referenced source or diff material, and sketch assets/text models.
+Return exactly one fenced YAML report using schema code-reader-document-review/v2.
+Check whether the overview gives a readable execution space, its execution-map coverage is complete when present, each covered stage resolves to its intended map anchor, and its key steps aggregate operations while abbreviating repetitions. Check whether each stage answers its question, makes state and ownership explicit with scannable atomic values, has aligned evidence, and preserves a readable cognitive load. Check whole-document flow, diagram choice, semantic focus-plus-context, and sketch accessibility.
+Do not edit files, run formatters, or implement fixes.
+"""

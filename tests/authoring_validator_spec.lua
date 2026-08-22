@@ -34,62 +34,27 @@ vim.fn.writefile({
   "  return total",
   "end",
 }, tmp .. "/src/complex.lua")
-vim.fn.writefile({
-  "local function adjust(value)",
-  "  if value then",
-  "    return value + 1",
-  "  end",
-  "  return value",
-  "end",
-}, tmp .. "/src/partial.lua")
 
 local validator = vim.fn.getcwd() .. "/plugins/code-reader-authoring/scripts/validate_code_reader_markdown.py"
 local python = vim.fn.exepath("python")
 eq(python ~= "", true, "python is available")
 
-local function write_lines(path, lines)
-  vim.fn.writefile(lines, path)
-end
-
-local function source_document(page_lines)
-  local lines = {
-    "---",
-    "type: code-reader",
-    "version: 1",
-    "---",
-    "",
-    "<!-- code-reader: front-page -->",
-    "# Overview",
-    "",
-    "Explain the problem and expected outcome.",
-    "",
-    "---",
-    "# 1. Explain source",
-    "",
+local function document(target, link)
+  return {
+    "---", "type: code-reader", "version: 2", "feature: validator-test", "---",
+    "# Overview", "```code-reader", "kind: overview", "id: validator-test",
+    "question: What does the selected function do?", "state:", "  status: not_applicable",
+    "  reason: Overview is descriptive.", "responsibility:", "  status: applicable", "  items:",
+    "    - owner: selected function", "      action: Perform the feature work", "```",
+    "---", "# 1. Explain source", "```code-reader", "kind: stage", "id: explain-source",
+    "question: What is the function responsibility?", "trigger: The feature calls the function", "state:",
+    "  status: applicable", "  changes:", "    - subject: result", "      owner: selected function",
+    "      before: input", "      cause: function returns", "      after: result", "      invariant: result follows the function contract",
+    "responsibility:", "  status: applicable", "  items:", "    - owner: selected function", "      action: Produce the result",
+    "failure:", "  status: not_applicable", "  reason: The selected example has no failure branch.", "evidence:",
+    "  - id: 1", "    kind: source", "    target: " .. target, "    claim: The selected function implements the result transition.", "```",
+    "The implementation evidence is " .. (link or "[1](code-reader://evidence/1)") .. ".",
   }
-  vim.list_extend(lines, page_lines)
-  return lines
-end
-
-local function diff_document(page_lines)
-  local lines = {
-    "---",
-    "type: code-reader-diff",
-    "version: 1",
-    "diff: ./change.diff",
-    "---",
-    "",
-    "<!-- code-reader: front-page -->",
-    "# Overview",
-    "",
-    "Explain the change.",
-    "",
-    "---",
-    "# 1. Explain change",
-    "",
-  }
-  vim.list_extend(lines, page_lines)
-  return lines
 end
 
 local function run_validator(path, extra_args)
@@ -101,197 +66,26 @@ local function run_validator(path, extra_args)
 end
 
 local valid_path = tmp .. "/valid.md"
-write_lines(valid_path, source_document({
-  "Source: `src/app.lua#L1-L3`",
-  "Cursor: `src/app.lua#L2`",
-  "",
-  "Explain the selected function.",
-  "",
-  "## Invariant",
-  "",
-  "The result is always the input plus one.",
-}))
+vim.fn.writefile(document("src/app.lua#L1-L3"), valid_path)
 local valid_status = run_validator(valid_path)
-eq(valid_status, 0, "validator accepts one Source reference in the preamble and conceptual child heading")
-
-local partial_path = tmp .. "/partial.md"
-write_lines(partial_path, source_document({
-  "Source: `src/partial.lua#L2-L4`",
-  "",
-  "Explain the complete conditional branch.",
-}))
-local partial_inventory_path = tmp .. "/partial-page-inventory.json"
-local partial_status = run_validator(partial_path, { "--emit-page-inventory", partial_inventory_path })
-eq(partial_status, 0, "validator analyzes a complete partial Source region")
-local partial_inventory = vim.fn.json_decode(table.concat(vim.fn.readfile(partial_inventory_path), "\n"))
-eq(partial_inventory.pages[1].static_metrics.status, "SUPPORTED", "complete partial Source region has static metrics")
-eq(partial_inventory.pages[1].static_metrics.analysis_region.kind, "sese_region", "inventory identifies a structural partial region")
-
-local cut_partial_path = tmp .. "/cut-partial.md"
-write_lines(cut_partial_path, source_document({
-  "Source: `src/partial.lua#L2-L3`",
-  "",
-  "Explain only part of a conditional branch.",
-}))
-local cut_partial_inventory_path = tmp .. "/cut-partial-page-inventory.json"
-local cut_partial_status = run_validator(cut_partial_path, { "--emit-page-inventory", cut_partial_inventory_path })
-eq(cut_partial_status, 0, "validator defers a non-structural partial Source range to semantic review")
-local cut_partial_inventory = vim.fn.json_decode(table.concat(vim.fn.readfile(cut_partial_inventory_path), "\n"))
-eq(cut_partial_inventory.pages[1].static_metrics.status, "NOT_AVAILABLE", "cut partial Source region has no invented static metric")
-eq(cut_partial_inventory.pages[1].static_metrics.fallback_required, true, "cut partial Source region requires reviewer fallback")
-eq(cut_partial_inventory.pages[1].static_metrics.fallback_scope.definition.name, "adjust", "fallback retains the enclosing definition")
-
-vim.fn.writefile({
-  "diff --git a/src/partial.lua b/src/partial.lua",
-  "--- a/src/partial.lua",
-  "+++ b/src/partial.lua",
-  "@@ -1,6 +1,6 @@",
-  " local function adjust(value)",
-  "-  if value == true then",
-  "+  if value then",
-  "     return value + 1",
-  "   end",
-  "   return value",
-  " end",
-}, tmp .. "/partial-change.diff")
-local partial_diff_path = tmp .. "/partial-diff.md"
-local partial_diff_lines = diff_document({
-  "Diff: `src/partial.lua#H1@new:L2-L4`",
-  "",
-  "Explain the complete changed conditional branch.",
-})
-partial_diff_lines[4] = "diff: ./partial-change.diff"
-write_lines(partial_diff_path, partial_diff_lines)
-local partial_diff_inventory_path = tmp .. "/partial-diff-page-inventory.json"
-local partial_diff_status = run_validator(partial_diff_path, { "--emit-page-inventory", partial_diff_inventory_path })
-eq(partial_diff_status, 0, "validator analyzes a complete focused Diff region")
-local partial_diff_inventory = vim.fn.json_decode(table.concat(vim.fn.readfile(partial_diff_inventory_path), "\n"))
-eq(partial_diff_inventory.pages[1].static_metrics.status, "SUPPORTED", "focused Diff region has static metrics")
-eq(partial_diff_inventory.pages[1].static_metrics.analysis_region.kind, "sese_region", "focused Diff region uses structural analysis")
+eq(valid_status, 0, "validator accepts a v2 source stage")
 
 local invalid_path = tmp .. "/invalid.md"
-write_lines(invalid_path, source_document({
-  "Source: `src/app.lua#L1-L3`",
-  "Cursor: `src/app.lua#L4`",
-  "",
-  "Explain the selected lines.",
-}))
+vim.fn.writefile(document("src/app.lua#L1-L3", "[2](code-reader://evidence/2)"), invalid_path)
 local invalid_status = run_validator(invalid_path)
-eq(invalid_status ~= 0, true, "validator rejects cursor outside source range")
-
-local duplicate_source_path = tmp .. "/duplicate-source.md"
-write_lines(duplicate_source_path, source_document({
-  "Source: `src/app.lua#L1-L3`",
-  "Source: `src/app.lua#L1-L2`",
-  "",
-  "The second Source directive must be a separate page.",
-}))
-local duplicate_source_status = run_validator(duplicate_source_path)
-eq(duplicate_source_status ~= 0, true, "validator rejects multiple Source directives in one page preamble")
-
-local body_source_path = tmp .. "/body-source.md"
-write_lines(body_source_path, source_document({
-  "Source: `src/app.lua#L1-L3`",
-  "",
-  "Explain the selected function.",
-  "",
-  "Source: `src/app.lua#L1-L2`",
-}))
-local body_source_status = run_validator(body_source_path)
-eq(body_source_status ~= 0, true, "validator rejects Source directives outside the page preamble")
-
-local numeric_child_path = tmp .. "/numeric-child.md"
-write_lines(numeric_child_path, source_document({
-  "Source: `src/app.lua#L1-L3`",
-  "",
-  "Explain the selected function.",
-  "",
-  "## 1.1 Nested implementation",
-  "",
-  "A numbered child heading must start a new page.",
-}))
-local numeric_child_status = run_validator(numeric_child_path)
-eq(numeric_child_status ~= 0, true, "validator rejects numeric child headings in a page")
-
-vim.fn.writefile({
-  "diff --git a/src/app.lua b/src/app.lua",
-  "--- a/src/app.lua",
-  "+++ b/src/app.lua",
-  "@@ -1,3 +1,3 @@",
-  "-local function simple(value)",
-  "+local function simple(input)",
-  "   return value + 1",
-  " end",
-  "@@ -3 +3 @@",
-  "-end",
-  "+end -- simple",
-}, tmp .. "/change.diff")
-
-local valid_diff_path = tmp .. "/valid-diff.md"
-write_lines(valid_diff_path, diff_document({
-  "Diff: `src/app.lua#H1@new:L1-L3`",
-  "Diff: `src/app.lua#H2@new:L3`",
-  "",
-  "Explain two hunks in the same page metadata preamble.",
-}))
-local valid_diff_status = run_validator(valid_diff_path)
-eq(valid_diff_status, 0, "validator allows multiple Diff directives in a page preamble")
-
-local body_diff_path = tmp .. "/body-diff.md"
-write_lines(body_diff_path, diff_document({
-  "Diff: `src/app.lua#H1@new:L1-L3`",
-  "",
-  "Explain the signature change.",
-  "",
-  "Diff: `src/app.lua#H2@new:L3`",
-}))
-local body_diff_status = run_validator(body_diff_path)
-eq(body_diff_status ~= 0, true, "validator rejects Diff directives outside the page preamble")
-
-vim.fn.writefile({
-  "diff --git a/src/app.lua b/src/app.lua",
-  "--- a/src/app.lua",
-  "+++ b/src/app.lua",
-  "@@ -1,3 +1,3 @@",
-  " local function simple(value)",
-  "-  return value + 0",
-  "+  return value + 1",
-  " end",
-}, tmp .. "/resolved-change.diff")
-local resolved_diff_path = tmp .. "/resolved-diff.md"
-local resolved_diff_lines = diff_document({
-  "Diff: `src/app.lua#H1@new:L1-L3`",
-  "",
-  "Explain the resolved hunk.",
-})
-resolved_diff_lines[4] = "diff: ./resolved-change.diff"
-write_lines(resolved_diff_path, resolved_diff_lines)
-local resolved_inventory_path = tmp .. "/resolved-page-inventory.json"
-local resolved_diff_status = run_validator(resolved_diff_path, { "--emit-page-inventory", resolved_inventory_path })
-eq(resolved_diff_status, 0, "validator resolves a Diff hunk against matching new-side source")
-local resolved_inventory = vim.fn.json_decode(table.concat(vim.fn.readfile(resolved_inventory_path), "\n"))
-eq(resolved_inventory.pages[1].diff_resolutions[1].status, "resolved", "inventory records resolved Diff source")
-eq(resolved_inventory.pages[1].static_metrics.status, "SUPPORTED", "resolved Diff uses source static metrics")
+eq(invalid_status ~= 0, true, "validator rejects an unknown evidence link")
 
 local complex_path = tmp .. "/complex.md"
-write_lines(complex_path, source_document({
-  "Source: `src/complex.lua#L1-L15`",
-  "",
-  "Explain the complex function.",
-}))
+vim.fn.writefile(document("src/complex.lua#L1-L15"), complex_path)
 local inventory_path = tmp .. "/page-inventory.json"
 local complex_status = run_validator(complex_path, { "--emit-page-inventory", inventory_path })
-eq(complex_status ~= 0, true, "validator blocks a page whose static complexity requires a split")
-truthy(vim.fn.filereadable(inventory_path) == 1, "validator writes page inventory when static split is required")
+eq(complex_status ~= 0, true, "validator blocks a v2 evidence range whose complexity requires a split")
+truthy(vim.fn.filereadable(inventory_path) == 1, "validator writes a v2 page inventory")
 local inventory = vim.fn.json_decode(table.concat(vim.fn.readfile(inventory_path), "\n"))
-eq(inventory.schema, "code-reader-page-inventory/v1", "inventory schema")
-eq(#inventory.pages, 1, "inventory contains the complex page")
-local complex_page = inventory.pages[1]
-eq(complex_page.static_verdict, "SPLIT_REQUIRED", "high V(G) page requires a split")
-eq(complex_page.static_metrics.status, "SUPPORTED", "Lua static metrics are available")
-eq(complex_page.static_metrics.cyclomatic_complexity, 12, "static V(G) counts eleven Lua if decisions")
-truthy(type(complex_page.static_metrics.peak_live_bindings) == "number", "inventory records peak live bindings")
-truthy(type(complex_page.static_metrics.analysis_region) == "table", "inventory records static analysis region")
-truthy(type(complex_page.static_metrics.evidence) == "table", "inventory records metric evidence")
+eq(inventory.schema, "code-reader-page-inventory/v2", "v2 inventory schema")
+eq(#inventory.pages, 2, "inventory contains overview and stage")
+local evidence = inventory.pages[2].evidence[1]
+eq(evidence.static_verdict, "SPLIT_REQUIRED", "high V(G) evidence requires a split")
+eq(evidence.static_metrics.cyclomatic_complexity, 12, "static V(G) counts eleven Lua if decisions")
 
 print("authoring_validator_spec: ok")

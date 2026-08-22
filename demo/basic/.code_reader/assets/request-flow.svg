@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="980" height="280" viewBox="0 0 980 280" role="img" aria-labelledby="title description">
+  <title id="title">Request ownership flow</title>
+  <desc id="description">A raw request owned by app.handle is parsed into a decoded request owned by request.parse_request, then validated and rendered into a response owned by the response module.</desc>
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L0,6 L9,3 z" fill="#495057"/>
+    </marker>
+  </defs>
+  <rect width="980" height="280" fill="#ffffff"/>
+  <g fill="#1f2937" font-family="Segoe UI, sans-serif">
+    <rect x="40" y="80" width="250" height="120" rx="8" fill="#e7f5ff" stroke="#1971c2" stroke-width="2"/>
+    <text x="165" y="115" text-anchor="middle" font-size="20" font-weight="700">Raw request</text>
+    <text x="165" y="148" text-anchor="middle" font-size="16">Owner: app.handle</text>
+    <text x="165" y="176" text-anchor="middle" font-size="16">State: raw</text>
+    <rect x="365" y="80" width="250" height="120" rx="8" fill="#fff3bf" stroke="#f08c00" stroke-width="2"/>
+    <text x="490" y="115" text-anchor="middle" font-size="20" font-weight="700">Parsed request</text>
+    <text x="490" y="148" text-anchor="middle" font-size="16">Owner: request.parse_request</text>
+    <text x="490" y="176" text-anchor="middle" font-size="16">State: decoded</text>
+    <rect x="690" y="80" width="250" height="120" rx="8" fill="#d3f9d8" stroke="#2b8a3e" stroke-width="2"/>
+    <text x="815" y="115" text-anchor="middle" font-size="20" font-weight="700">Response</text>
+    <text x="815" y="148" text-anchor="middle" font-size="16">Owner: response module</text>
+    <text x="815" y="176" text-anchor="middle" font-size="16">State: rendered</text>
+    <path d="M290 140 H365" fill="none" stroke="#495057" stroke-width="3" marker-end="url(#arrow)"/>
+    <text x="327" y="128" text-anchor="middle" font-size="16">parse</text>
+    <path d="M615 140 H690" fill="none" stroke="#495057" stroke-width="3" marker-end="url(#arrow)"/>
+    <text x="652" y="128" text-anchor="middle" font-size="16">validate + render</text>
+  </g>
+</svg>

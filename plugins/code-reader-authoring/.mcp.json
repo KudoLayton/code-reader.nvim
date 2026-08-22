@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "excalidraw": {
+      "command": "npx",
+      "args": [
+        "--yes",
+        "mcp-excalidraw-server@2.0.0"
+      ]
+    }
+  }
+}

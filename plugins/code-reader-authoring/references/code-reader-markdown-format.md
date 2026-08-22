@@ -1,291 +1,211 @@
-# Code Reader Markdown Format
+# Code Reader Markdown v2
 
-Use this reference before writing any `code-reader.nvim` explanation markdown.
+Use this reference before authoring or reviewing a Code Reader walkthrough. Markdown is the canonical document. The PDF renderer uses HTML internally, but neither PDF export nor reading a document contacts an MCP server.
 
-## Shared Rules
+## Document contract
 
-- Write explanation prose in the language the user primarily uses. If the user explicitly requests a language, use that language.
-- Keep code identifiers, file paths, source ranges, diff refs, link targets, and protocol URLs exactly as they appear in the project.
-- Users may provide references copied from code-reader.nvim with `:CodeReaderCopyRef`. Treat `path#Lx`, `path#Lx-Ly`, `path#Hn`, and `path#Hn@old/new:Lx-Ly` values as direct targets for the explanation unless the user asks to broaden or narrow the scope.
-- Use YAML frontmatter at the top:
+Use frontmatter with `type: code-reader` or `type: code-reader-diff`, `version: 2`, and a stable `feature` id. Diff documents also declare `diff: ./change.diff` relative to the Markdown file.
 
-```markdown
+Separate sections with `---`. Each section begins with a `code-reader` fenced YAML block. The first section has `kind: overview`; later sections normally use `kind: stage`. Every overview and stage has an `id`, a reader-facing `question`, `state`, and `responsibility`. Every stage additionally has a `trigger`, `failure`, and ordered `evidence` list.
+
+Write for the reader route, not source-file order: **execution map → key step → semantic bullets → source or diff proof**. The overview gives the execution space; stages explain the few decisions that change state, ownership, or outcome. A reader must be able to answer “How is this feature implemented?” before opening a source range.
+
+````markdown
 ---
 type: code-reader
-version: 1
+version: 2
+feature: request-flow
 ---
+# Overview
+```code-reader
+kind: overview
+id: request-flow
+question: What happens to a request?
+state:
+  status: not_applicable
+  reason: The overview does not execute.
+responsibility:
+  status: applicable
+  items:
+    - owner: app.handle
+      action: Coordinate the lifecycle
+evidence:
+  - id: 1
+    kind: sketch
+    purpose: execution-map
+    target: .code_reader/assets/request-flow.svg
+    editable_target: .code_reader/assets/request-flow.excalidraw
+    claim: The map aggregates the request lifecycle into its key decisions and outcomes.
+    coverage:
+      - parse-input
+    text_model:
+      claim: Raw input becomes either a successful response or an error response.
+      nodes:
+        - id: raw
+          label: Raw request
+          owner: app.handle
+          state: raw
+        - id: response
+          label: Response
+          owner: response
+          state: rendered
+      edges:
+        - id: parse-and-render
+          from: raw
+          to: response
+          label: parse, validate, and render
 ```
-
-- Separate every page or step with a line containing only `---`.
-- Put `<!-- code-reader: front-page -->` as the first non-empty line of the first section.
-- The front page must explain the problem, expected reader outcome, a concrete representative example, high-level structure, main module roles, and the reading flow before the detailed steps.
-- Use Mermaid diagrams on the front page or individual steps when they clarify structure, control flow, data flow, or hunk impact.
-- Prefer plain prose or lists instead of Mermaid when the user disabled Mermaid rendering or `:checkhealth code_reader` reports that Node, npm, or `beautiful-mermaid` is unavailable.
-- Do not put `Source:`, `Diff:`, or `Target:` metadata on the front page. Put metadata on concrete explanation pages.
-- Use numeric heading ids for top-level and nested steps, such as `# 1. Request lifecycle`, `## 1.1. Parse request`, and `### 1.1.1. Validate method`.
-- Heading depth on the first heading of each `---`-separated page drives TOC nesting. A numeric heading that follows the opening heading in the same page is invalid: give it its own `---` page. A non-numeric child heading is allowed only as conceptual organization for the same target code.
-- Use `[[step-id]]` or `[[step-id|label]]` only for links to existing steps in the same explanation.
-- Order pages by runtime execution flow, not source-file or diff order. When a scope contains a long routine or subroutine, use nested pages instead of making one broad page.
-- A page's scope must contain only the code or change needed by that page's prose, diagrams, and links. Do not broaden a scope merely to make coverage look higher.
-
-## Page Reference Preamble
-
-Every concrete page has a metadata preamble immediately after its opening heading and before prose, diagrams, or child headings.
-
-- A `type: code-reader` page has exactly one continuous `Source:` reference in that preamble. Its optional `Cursor:` reference must name the same path and stay inside that Source range.
-- A `type: code-reader-diff` page has exactly one `Diff:` reference in that preamble. An unmodified hunk reference may compare old and new code, while a side-specific reference narrows the page to one old or new range. Explain another hunk or range on a separate page.
-- Optionally add one `Target: function <name>` or `Target: type <name>` line to override the AST-derived target-definition label in both the explanation and its code page. Use it only when automatic detection is unavailable or selects the wrong declaration.
-- A page must not contain an additional `Source:` or `Diff:` reference after the preamble, and a document type must not use the other reference kind.
-- A page may explain a function, method, type, class, named declaration, or one top-level declaration or statement. It must not combine sibling definitions, multiple class members, or multiple top-level statements. A class container page is allowed only for its declaration or contract, not to explain several members.
-
-## Target Definition Labels
-
-The PDF renderer labels each concrete explanation page and its matching Source or Diff code page with the target function or type definition.
-
-- For a Source page, it parses the referenced source with the registered AST adapter. If the range starts across several declarations, it lists every affected function or type definition; when it lies inside nested definitions, it shows the innermost one.
-- For a Diff page, it parses the resolved before/after source reconstructed from the patch: `@new` selects after, `@old` selects before, and a comparison without a side prefers after then before. A focused reference uses its focused range rather than the full hunk.
-- Tree-sitter parsers are prepared automatically from a built-in pinned profile or an explicitly approved user-local profile when first needed. Each grammar is isolated with its runtime and the installed wheel ABI must be within 13 through 15. If source resolution, parser preparation, ABI verification, or AST parsing fails, omit the label; do not invent a range label or fail PDF generation. A missing profile returns `PROVISION_REQUIRED`; it must be proposed and approved through `provision-code-reader-parser`, never installed during PDF generation.
-- `Target:` is a manual override. Keep its name as it appears in code, and do not use it merely to repeat a definition that the renderer can already identify.
-
-## Code Explanation
-
-- Use `type: code-reader`.
-- Write the one source reference as `Source: path#Lx` or `Source: path#Lx-Ly`.
-- Use optional `Cursor: path#Lx` when the explanation starts inside the Source range.
-- Keep paths project-root relative and use `/` separators.
-- Optional symbol links must include the source path:
-
-```markdown
-[handle](<treesitter://src/app.lua?query=(identifier) @code_reader.symbol>)
+---
+# 1. Parse input
+```code-reader
+kind: stage
+id: parse-input
+map_anchor:
+  map: 1
+  nodes:
+    - raw
+  edges:
+    - parse-and-render
+question: How does raw input become a request?
+trigger: app.handle receives raw input
+state:
+  status: applicable
+  changes:
+    - subject: request
+      owner: request.parse
+      before: raw
+      cause: parser runs
+      after: decoded
+      invariant: defaults are present
+responsibility:
+  status: applicable
+  items:
+    - owner: request.parse
+      action: Normalize optional fields
+failure:
+  status: not_applicable
+  reason: Missing optional fields receive defaults.
+evidence:
+  - id: 1
+    kind: source
+    target: src/request.lua#L3-L13
+    claim: Parsing creates the decoded request.
 ```
+The transition is implemented in [1](code-reader://evidence/1).
+````
 
-## Diff Explanation
+The prose explains the mechanism, consequence, and reader decision. It must not restate the entire source range. Evidence ids begin at 1 in each section, have no gaps, and every id appears in a `code-reader://evidence/<id>` Markdown link in that section.
 
-- Use `type: code-reader-diff`.
-- Add `diff: ./change.diff` in frontmatter. Resolve it relative to the markdown file.
-- The front page should summarize the change set: purpose, behavioral impact, affected files or modules, and suggested review flow.
-- Explain individual hunks in step pages, not on the front page.
-- Use step-level Mermaid diagrams only when they make a specific hunk or cross-file relationship easier to review.
-- Write one reference as `Diff: path#Hn`, where `Hn` is the file-local hunk number from the unified diff. Use a separate page for every additional hunk or focused range.
-- For large hunks or whole-file additions, split the explanation with side-specific focus ranges:
-  - `Diff: path#Hn@old:L10-L18`
-  - `Diff: path#Hn@new:L20-L40`
-  - `@a` means old/before and `@b` means new/after.
-- A side modifier declares the page's primary explanation target: use `@new` for post-change behavior and `@old` for removed or replaced pre-change behavior. Do not choose a side merely to make the displayed range smaller.
-- When the page's central purpose is to compare the two versions rather than walk through one version, omit the side modifier (`Diff: path#Hn`) and describe the comparison explicitly.
-- To include hunk-adjacent lines, prefer explicit hunk-relative bounds:
-  - `Diff: path#Hn@new:L(-1)-L(+2)` means from one line before the new-side hunk start through two lines after the new-side hunk end.
-  - `Diff: path#Hn@old:L(-1)-L22` mixes a relative start with an absolute end line.
-  - `L-1-L22` is accepted as shorthand, but write `L(-1)-L22` by default.
-- Use `padding=N` or `pad=N` when the same number of lines should be focused before and after the hunk: `Diff: path#Hn@new:padding=2`.
-- Prefer covering every hunk in the diff unless the user asks for a partial explanation. When only part of a hunk belongs on a page, use a side-specific range and cover the remaining meaningful change in another page; do not claim whole-hunk coverage with an unnecessarily broad page.
+Use three to seven stages for the normal path. Aggregate mechanical operations under the decision they serve. For a repeated operation, show its first occurrence, last outcome, and the rule that makes the middle occurrences equivalent; do not spend a stage on each repetition. Split a stage only when the reader question, state transition, owner, or outcome changes.
 
-## Static Page Metrics
+## Evidence and diagrams
 
-Run the registered static-analysis bootstrap before asking a reviewer. It may install only a repository-pinned built-in profile or a previously approved user-local profile. A missing language returns `PROVISION_REQUIRED`; use `provision-code-reader-parser` to propose the candidate and obtain approval before provisioning it. Do not select, install, or upgrade a parser or analyzer ad hoc during validation.
+- `source` targets one project-relative `path#Lx-Ly` range. Use `cursor` only to select a line inside that range.
+- `diff` targets one `path#Hn`, optionally with an `@old` or `@new` focused range. Explain every hunk unless partial coverage is requested.
+- `sketch` is for a relationship that prose or a simple Mermaid flow would hide: three or more interacting responsibilities, a non-linear branch, or a state/ownership handoff that needs spatial comparison.
 
-The page inventory records the analysis result for each resolved Source range and for both resolvable old/new Diff sides:
+Use a sketch `purpose` to declare the reader question it answers:
 
-- `V(G)` and `peak_live_bindings` are deterministic only when the displayed range is a full definition or a complete structural SESE subregion within one definition. A selected range must align with complete syntax and control-flow boundaries; never substitute the enclosing function's metrics for a non-structural partial range.
-- `analysis_region.kind` is `definition` or `sese_region`. A `sese_region` records its owning definition, decision nodes, and peak binding evidence. Python and Lua use direct adapters; Tree-sitter languages use their registered built-in grammar profile or a previously approved user-local profile.
-- `peak_live_bindings` is a local-binding proxy. It excludes heap/object fields, globals, aliases, dynamic calls, and values needed only outside a selected SESE region. Treat a low static value as reviewer input, not proof that the page is safe.
-- A Diff resolver first uses the old/new blob revision and path, then verifies hunk lines and context. For an unresolved side, the inventory records `hunk_fallback`, the attempted revision, and the reason instead of inventing a source range.
+- `execution-map`: the overview's key execution steps, branches, and outcomes. It is the default opening evidence. It belongs only in `kind: overview` and requires `coverage` listing every stage id it represents.
+- `handoff-map`: an ownership handoff among collaborating modules or data owners.
+- `state-map`: a finite lifecycle whose valid transitions matter more than the fields of one transition.
+- `structure-map`: a static boundary or dependency relationship needed to orient the reader.
 
-The writing agent must split and re-run static validation without requesting a reviewer when either of these conditions is true:
+Do not force a diagram into every stage. Use a source/diff range when the relationship is already local and linear. Use a table only for a compact exact comparison; Code Reader renders state and responsibility models as labelled bullet cards rather than wide prose tables.
 
-- `V(G) >= 12` or `peak_live_bindings >= 9`.
-- Both `V(G) >= 11` and `peak_live_bindings >= 8`.
-
-An unavailable profile, parser failure, unresolved Diff source, or a non-SESE partial range sets `fallback_required: true`. It is not a pass: the Page Scope Review must measure the unavailable criteria from the page's actual scope.
-
-## Page Scope Review v1
-
-After static validation passes without an immediate split, ask one read-only `code_reader_page_scope_reviewer` subagent to perform Page Scope Review. Configure it as described in [Page Scope Reviewer Configuration](#page-scope-reviewer-configuration), then give it the project root, Markdown path, document type, page inventory, related source files or revisions, and the diff path with its complete `path#Hn` list when applicable. The subagent must not edit files.
-
-The reviewer must inspect pages in document order and return exactly one YAML report in a fenced `yaml` block with this shape:
+A sketch keeps an editable Excalidraw scene and a display SVG together:
 
 ```yaml
-schema: code-reader-page-scope-review/v1
-document: relative/path/to/walkthrough.md
+- id: 2
+  kind: sketch
+  purpose: handoff-map
+  target: .code_reader/assets/request-flow.svg
+  editable_target: .code_reader/assets/request-flow.excalidraw
+  claim: Ownership transfers after validation.
+  text_model:
+    claim: The validated request moves from parser to dispatcher.
+    nodes:
+      - id: raw
+        label: Raw request
+        owner: app.handle
+        state: raw
+      - id: validated
+        label: Validated request
+        owner: dispatcher
+        state: validated
+    edges:
+      - from: raw
+        to: validated
+        label: validate
+```
+
+`target` and `editable_target` are project-root-relative paths. `target` is an SVG preview used by Neovim and PDF. `editable_target` is a JSON `.excalidraw` scene. `text_model` is mandatory even when the SVG is visible; it is the accessible text equivalent and the fallback reader view.
+
+For an execution map, add stage coverage:
+
+```yaml
+purpose: execution-map
+coverage:
+  - parse-input
+  - validate-request
+```
+
+Coverage identifies explained stages, not necessarily one SVG node per stage. The map may aggregate adjacent operations, but it must make the branch or outcome that distinguishes them readable.
+
+### Stage position anchors
+
+An execution map also gives every stage a stable reader position. Its `text_model.nodes[].id` and `text_model.edges[].id` are the anchor namespace: execution-map edge ids are required and must be unique. A covered stage declares the map evidence id plus the node and/or edge ids that describe its current scope.
+
+```yaml
+map_anchor:
+  map: 1
+  nodes:
+    - validated-request
+  edges:
+    - validation-result
+```
+
+The Neovim explanation pane renders this as a compact text minimap below the page title. The PDF renders a derived semantic minimap in the same place: only nodes named directly in `map_anchor.nodes` are high-contrast; selected edges are high-contrast transitions; their endpoints plus immediate incoming handoffs and outgoing outcomes are secondary. The rest of the execution graph stays muted for context. The original SVG remains unchanged and still appears as overview evidence.
+
+When one execution map exists and a stage id exactly equals one map node id, the anchor may be omitted and is inferred. Otherwise `map_anchor` is required for every covered stage. With multiple execution maps, always set `map`; the selected map must list that stage in `coverage`. Validation rejects unknown map, node, or edge ids and execution maps whose combined coverage misses a runtime stage.
+
+Use Mermaid for a compact, single-owner linear flow. Prefer a labelled spatial sketch for ownership transfer, an alternate branch, a state lifecycle, or a static boundary. Do not create a sketch solely to decorate a document.
+
+## Excalidraw MCP workflow
+
+When a sketch is needed, use the packaged `excalidraw` MCP server or `npx -y mcp-excalidraw-server@2.0.0`. Work locally; do not use a share/upload command unless the user explicitly asks.
+
+1. Create or import the `.excalidraw` scene under `.code_reader/assets/`.
+2. Inspect the scene with the MCP description and, with a local canvas tab open, inspect a screenshot for overlap, clipped labels, arrow direction, state labels, and ownership labels.
+3. Export the unchanged scene as the `.excalidraw` editable target and export a SVG screenshot as the `target` preview.
+4. Update `text_model` so its claim, nodes, owners, states, and edges agree with the scene.
+5. Run the validator. If the MCP or a canvas tab is unavailable, use Mermaid or labelled bullet cards instead of adding incomplete sketch evidence.
+
+## Whole-document review
+
+After validation, use one read-only `code_reader_document_reviewer` configured from `code-reader-document-reviewer.toml`. Supply the Markdown file, inventory, referenced source/diff material, and sketch assets. The reviewer returns one fenced YAML report with this shape:
+
+```yaml
+schema: code-reader-document-review/v2
+document: .code_reader/walkthrough.md
 overall_verdict: PASS # PASS | CHANGES_REQUIRED
-pages:
-  - page_id: "1"
-    refs: ["src/example.py#L10-L34"]
-    resolution: source # source | diff_resolved | hunk_fallback
-    definition:
-      name: parse_request
-      kind: function
-      evidence: ["src/example.py#L10-L34"]
-      single_definition: true
-    headings:
-      - text: "Input normalization"
-        classification: conceptual # conceptual | scope_expanding
-        counterfactual: "Removing this section would not narrow the Source range."
-    focus_alignment: null # Required for Diff pages only.
-    metrics:
-      static:
-        status: SUPPORTED
-        cyclomatic_complexity: 4
-        peak_live_bindings: 3
-      semantic:
-        cyclomatic_complexity: null # Required only when static_metrics.fallback_required is true.
-        independent_concepts:
-          count: 2
-          items:
-            - name: normalize request fields
-              evidence: ["src/example.py#L12-L18"]
-              rationale: "Defines the input contract before parsing."
-        variable_value_pairs:
-          count: 3
-          peak_location: "src/example.py#L22"
-          bindings:
-            - name: method
-              role: normalized input
-              evidence: ["src/example.py#L12-L22"]
-    triggered_rules: []
-    verdict: PASS # PASS | SPLIT_REQUIRED | CHANGES_REQUIRED
+stages:
+  - id: parse-input
+    question_answered: true
+    state_and_ownership: PASS
+    evidence_alignment: PASS
+    cognitive_load: PASS
     required_action: null
+document_flow: PASS
+sketch_accessibility: PASS
 ```
 
-For every page, apply the following measurement procedure and record evidence in the report.
-
-### Definition and child-heading scope
-
-1. Verify that the resolved reference lies inside one allowed definition. A hunk that crosses definitions must use a focused old/new range or become separate pages.
-2. Evaluate every H2+ heading by removing that heading and its explanation hypothetically. If doing so allows the page's Source or resolved Diff scope to become smaller, classify it as `scope_expanding` and require a new `---` page. Headings that explain the same range's input, output, invariant, or control order are `conceptual`.
-3. An unresolved Diff uses `hunk_fallback`: inspect the hunk body, context, and header only. If these do not establish one definition with sufficient confidence, return `CHANGES_REQUIRED`, never PASS.
-
-### Static-analysis fallback
-
-When a page inventory entry has `static_metrics.fallback_required: true`, use its `fallback_scope`, page references, and resolved Diff source to measure every unavailable criterion over the displayed page scope and add this report field:
-
-```yaml
-metrics:
-  static:
-    status: NOT_AVAILABLE
-    reason_code: NON_SESE_RANGE
-  semantic:
-    cyclomatic_complexity:
-      count: 4
-      confidence: exact # exact | lower_bound | unavailable
-      decision_points:
-        - kind: if
-          evidence: ["src/example.py#L14"]
-      rationale: "The complete displayed branch has one decision."
-```
-
-- Measure `V(G)` as one plus the decision points in the page's displayed Source or resolved Diff side. Use `exact` only when the source/revision establishes the complete selected scope and its definition boundary.
-- For `hunk_fallback`, measure only a supported `lower_bound` from hunk lines and context. A lower bound that reaches a split threshold requires `SPLIT_REQUIRED`; a lower bound below threshold cannot establish PASS by itself.
-- Preserve the existing independent-concept and variable--value procedures, but perform them on the same displayed scope. The static proxy and semantic variable-value count use the larger value when both are available.
-- If the reviewer cannot make an exact measurement from readable source or revision, record `unavailable` with evidence and return `CHANGES_REQUIRED`. Do not estimate a missing metric silently.
-
-### Diff focus-side alignment
-
-For every Diff page, add this field to the page report:
-
-```yaml
-focus_alignment:
-  declared_side: new # old | new | none
-  described_side: new # old | new | comparison | undetermined
-  evidence:
-    - "The page walks through the newly added guard and its return value."
-    - "The `@new` range contains the guard discussed in the central claim."
-  verdict: MATCH # MATCH | MISMATCH | INSUFFICIENT_EVIDENCE
-```
-
-Determine `described_side` from the page's central explanatory claims, not from incidental comparison text. A page can mention the other version as context while still describing `new` or `old` as its primary target.
-
-- `@new` matches only when the central walkthrough explains the post-change code, behavior, or state.
-- `@old` matches only when the central walkthrough explains removed or replaced pre-change code or behavior.
-- `none` matches only when the central walkthrough is a balanced old/new comparison. If a page is actually centered on one side, it must use that side's modifier instead.
-- If focused references on one page declare conflicting sides, or the prose does not establish a primary target, return `INSUFFICIENT_EVIDENCE` rather than guessing. Split the page or make the comparison explicit with an unmodified hunk reference.
-
-Set `MISMATCH` when `@old` is used to support a new-side walkthrough, `@new` is used to support an old-side walkthrough, or a side modifier is used for a genuinely comparative page. Set `INSUFFICIENT_EVIDENCE` when the central claim cannot be identified or the focused range does not contain the code needed to support it. Either result requires `CHANGES_REQUIRED`: change the modifier, clarify the prose, or split the page. This check is semantic review; it does not replace source-resolution or definition-boundary checks.
-
-Review acceptance examples:
-
-- A page centered on a newly added guard uses `@new` and may briefly contrast the old path: `MATCH`.
-- A page explains the removed retry loop with `@old`: `MATCH`.
-- A page explains a before/after behavioral difference with an unmodified `Diff: path#Hn`: `MATCH`.
-- A page explains the new guard but declares `@old`: `MISMATCH` and `CHANGES_REQUIRED`.
-- A page contains both sides but never states whether it explains a new behavior, old behavior, or comparison: `INSUFFICIENT_EVIDENCE` and `CHANGES_REQUIRED`.
-
-### Independent concepts
-
-Count one concept for each separate responsibility with its own answer to “what or why must the reader understand?” Record its name, code evidence, and why it is separate. Typical concepts include validation, state creation or mutation, transformation algorithm, branch policy, error/retry policy, I/O or persistence, protocol/integration, and concurrency/lifecycle.
-
-- Do not count syntax, a helper calculation serving the same responsibility, or a sequence of calls that implements one state transition separately.
-- Count `independent_concepts >= 5` as a normal violation and `>= 6` as an extreme violation.
-
-### Variable--value pairs
-
-At each cognitively demanding execution point--immediately before a branch, output, or side effect--list the bindings a reader must retain to predict what happens next. Use the highest count.
-
-- Include parameters, locals, independently compared fields or keys, loop accumulators, and branch conditions.
-- Count a plainly forwarded object once; count aliases separately when their distinct names must be tracked. Exclude clear constants, values irrelevant to the current result, and values fully externalized in a state table or diagram on the page.
-- Record the peak location and, for every counted binding, its name, role, and source evidence. Report both the static proxy and semantic count; apply the larger value for the split policy so a static warning cannot be rationalized away.
-- Count `variable_value_pairs >= 8` as a normal violation and `>= 9` as an extreme violation.
-
-### Verdict rules
-
-`SPLIT_REQUIRED` is mandatory when any one of the following applies:
-
-- The page crosses a definition boundary or has a `scope_expanding` child heading.
-- `V(G) >= 12`, independent concepts `>= 6`, or variable--value pairs `>= 9`.
-- At least two normal violations: `V(G) >= 11`, independent concepts `>= 5`, and variable--value pairs `>= 8`. Use deterministic `V(G)` when static analysis is supported; otherwise use the reviewer's exact fallback value.
-
-For a resolved Diff, use the more demanding old/new measurement. For `hunk_fallback`, count only supported lower bounds; if a lower bound triggers a rule, require a split. A required fallback with no exact review measurement, a Diff `focus_alignment` verdict other than `MATCH`, an unknown safe definition boundary, or an unknown cognitive load requires `CHANGES_REQUIRED`. The writing agent fixes every non-PASS page, then re-runs the static validator and a fresh Page Scope Review until the report is `overall_verdict: PASS`.
-
-For diff documents, the report must also include a `hunk_coverage` table and list uncovered hunks. All hunks remain required unless the user explicitly requested a partial explanation.
-
-## Page Scope Reviewer Configuration
-
-The reviewer is intentionally separate from the writing agent so its model and reasoning effort do not silently inherit a high-cost parent setting. The packaged template is `code-reader-page-scope-reviewer.toml` in this directory and uses `gpt-5.6-luna` with `medium` reasoning effort in read-only mode.
-
-Before asking for Page Scope Review, look for this file in either location:
-
-- `<project-root>/.codex/agents/code_reader_page_scope_reviewer.toml`
-- `%USERPROFILE%/.codex/agents/code_reader_page_scope_reviewer.toml`
-
-When neither file exists, tell the user that the dedicated reviewer is not configured, recommend copying the packaged template to one of those locations, and explain that a new Codex thread may be needed to load it. Do not silently use the writing agent's model and reasoning effort. Ask whether to configure the reviewer, run one explicit read-only `gpt-5.6-luna` / `medium` review when the runtime supports explicit spawn settings, or skip Page Scope Review. Do not create or modify the user's personal Codex configuration automatically.
-
-## Walkthrough Flow Review v1
-
-After the validator and Page Scope Review both report PASS, the writing agent—not a subagent—must evaluate the walkthrough as a whole. Read the front page, every concrete page in document order, the page inventory, and the referenced source or diff material. Return exactly one YAML report in a fenced `yaml` block:
-
-```yaml
-schema: code-reader-walkthrough-flow-review/v1
-document: relative/path/to/walkthrough.md
-overall_verdict: PASS # PASS | CHANGES_REQUIRED
-pages:
-  - page_id: "1"
-    execution_order:
-      predecessor: front # front | page id | null
-      successor: "1.1" # page id | null
-      evidence: ["src/example.py#L10-L34"]
-      verdict: PASS # PASS | CHANGES_REQUIRED
-    hierarchy:
-      parent_page_id: null # page id | null
-      relationship: "Introduces the request lifecycle."
-      evidence: ["The child page explains the branch executed inside this request lifecycle."]
-      verdict: PASS # PASS | CHANGES_REQUIRED
-    required_action: null
-```
-
-Evaluate every concrete page with these rules:
-
-1. Follow runtime execution, control flow, call flow, or data dependency order rather than source-file or diff order. A prerequisite page must precede the page that consumes its result.
-2. A nested page must follow its nearest shallower parent, describe a real substep of that parent, and have a heading depth consistent with the relationship. Do not skip a hierarchy level or use nesting only to group unrelated siblings.
-3. Top-level pages must form a readable sequence from entry through outcome. The front page may introduce the architecture but must state the same reading flow.
-
-Set `CHANGES_REQUIRED` for any misplaced dependency, source-order-only sequencing, misleading parent/child relationship, skipped hierarchy level, or front-page flow that disagrees with the concrete pages. When a fix changes a range, prose scope, or page count, rerun static validation and Page Scope Review before a new Flow Review. When it changes only order or heading depth, rerun Flow Review.
+Review the whole runtime narrative: entry to outcome, whether the execution map covers every stage, whether each stage anchor resolves to the intended current scope and immediate handoffs, key-step aggregation, repetition abbreviation, state transitions, ownership handoffs, errors or non-applicability, evidence order, source/diff coverage, and whether a sketch agrees with its text model. Fix every `CHANGES_REQUIRED`, revalidate, then obtain a fresh whole-document report.
 
 ## Validation
-
-Run the shared validator and emit an inventory after writing or editing a document. This command performs the registered built-in or approved user-profile dependency bootstrap before collecting static metrics:
 
 ```powershell
 python plugins/code-reader-authoring/scripts/validate_code_reader_markdown.py --project-root <repo-root> --emit-page-inventory <inventory.json> <markdown-file>
 ```
 
-Use `--allow-partial-diff` only when the user explicitly wants a partial diff explanation.
+Use `--allow-partial-diff` only when the user explicitly requests partial diff coverage. The validator checks the v2 contract, evidence links, source scopes, diff hunk coverage, SVG preview, Excalidraw scene, sketch text model, execution-map coverage, and stage anchors.

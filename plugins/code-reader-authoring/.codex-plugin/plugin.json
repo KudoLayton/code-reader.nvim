@@ -1,24 +1,26 @@
 {
   "name": "code-reader-authoring",
-  "version": "0.2.1+codex.20260812143252",
-  "description": "Author Code Reader walkthrough markdown and render it as formatted PDF.",
+  "version": "0.2.1+codex.20260822084417",
+  "description": "Author v2 Code Reader walkthroughs with evidence, editable Excalidraw sketches, and PDF output.",
   "author": {
     "name": "KudoLayton",
     "email": "lhslhg@gmail.com"
   },
   "license": "Apache-2.0",
   "skills": "./skills/",
+  "mcpServers": "./.mcp.json",
   "interface": {
     "displayName": "Code Reader Authoring",
-    "shortDescription": "Author and export Code Reader walkthroughs.",
-    "longDescription": "Code Reader Authoring helps Codex create, validate, and export code walkthrough and diff explanation markdown for code-reader.nvim.",
+    "shortDescription": "Author v2 evidence-first Code Reader walkthroughs.",
+    "longDescription": "Code Reader Authoring helps Codex create, validate, review, and export v2 feature and diff walkthroughs with editable Excalidraw sketch assets.",
     "developerName": "KudoLayton",
     "category": "Productivity",
     "capabilities": [
       "Write",
       "Validate",
-      "Generate"
+      "Generate",
+      "Sketch"
     ],
-    "defaultPrompt": "Use Code Reader Authoring to explain this feature, diff, or export a walkthrough as PDF."
+    "defaultPrompt": "Use Code Reader Authoring to explain this feature or diff with v2 evidence and export it as PDF."
   }
 }
