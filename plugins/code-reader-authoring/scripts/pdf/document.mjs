@@ -19,6 +19,83 @@ function unquote(value) {
   return trimmed;
 }
 
+function parseYamlScalar(value) {
+  const scalar = unquote(value);
+  if (scalar === "true") return true;
+  if (scalar === "false") return false;
+  if (/^-?\d+(?:\.\d+)?$/.test(scalar)) return Number(scalar);
+  return scalar;
+}
+
+function tokenizeRestrictedYaml(lines) {
+  return lines.filter((line) => line.text.trim() !== "").map((line) => {
+    const whitespace = line.text.match(/^\s*/)[0].length;
+    if (whitespace % 2 !== 0) {
+      throw new Error(`YAML indentation must use two spaces (line ${line.line}).`);
+    }
+    return { indent: whitespace / 2, text: line.text.trim(), line: line.line };
+  });
+}
+
+function parseYamlBlock(tokens, position, indent) {
+  const list = tokens[position]?.text.startsWith("- ");
+  const result = list ? [] : {};
+  while (position < tokens.length) {
+    const token = tokens[position];
+    if (token.indent !== indent || token.text.startsWith("- ") !== list) break;
+    if (list) {
+      const text = token.text.slice(2).trim();
+      position += 1;
+      const pair = text.match(/^([\w-]+):\s*(.*?)\s*$/);
+      if (!pair) {
+        result.push(parseYamlScalar(text));
+        continue;
+      }
+      const item = {};
+      if (pair[2]) {
+        item[pair[1]] = parseYamlScalar(pair[2]);
+      } else if (tokens[position]?.indent > indent) {
+        const child = parseYamlBlock(tokens, position, tokens[position].indent);
+        item[pair[1]] = child.value;
+        position = child.position;
+      } else {
+        item[pair[1]] = {};
+      }
+      if (tokens[position]?.indent > indent) {
+        const child = parseYamlBlock(tokens, position, tokens[position].indent);
+        if (Array.isArray(child.value)) throw new Error(`List item continuation must be a mapping (line ${token.line}).`);
+        Object.assign(item, child.value);
+        position = child.position;
+      }
+      result.push(item);
+      continue;
+    }
+    const pair = token.text.match(/^([\w-]+):\s*(.*?)\s*$/);
+    if (!pair) throw new Error(`Invalid YAML mapping (line ${token.line}).`);
+    position += 1;
+    if (pair[2]) {
+      result[pair[1]] = parseYamlScalar(pair[2]);
+    } else if (tokens[position]?.indent > indent) {
+      const child = parseYamlBlock(tokens, position, tokens[position].indent);
+      result[pair[1]] = child.value;
+      position = child.position;
+    } else {
+      result[pair[1]] = {};
+    }
+  }
+  return { value: result, position };
+}
+
+function extractV2Metadata(lines) {
+  const start = lines.findIndex((line) => line.text.trim() === "```code-reader");
+  if (start < 0) return { metadata: {}, lines };
+  const end = lines.findIndex((line, index) => index > start && line.text.trim() === "```");
+  if (end < 0) throw new Error(`Code Reader metadata fence is not closed (line ${lines[start].line}).`);
+  const tokens = tokenizeRestrictedYaml(lines.slice(start + 1, end));
+  const metadata = tokens.length ? parseYamlBlock(tokens, 0, tokens[0].indent).value : {};
+  return { metadata, lines: lines.filter((_, index) => index < start || index > end) };
+}
+
 function parseFrontmatter(lines) {
   if (lines[0]?.trim() !== "---") {
     return { frontmatter: {}, startIndex: 0 };
@@ -136,18 +213,52 @@ function parseTargetReference(line) {
   return { kind: match[1].toLowerCase(), name: match[2] };
 }
 
-function parseStep(section, index) {
-  const headingIndex = section.lines.findIndex((line) => /^#{1,6}\s+/.test(line.text));
-  const heading = headingIndex >= 0 ? section.lines[headingIndex] : undefined;
+function normalizeEvidence(metadata) {
+  const byId = new Map();
+  const evidence = [];
+  for (const item of metadata.evidence ?? []) {
+    const id = Number(item.id);
+    const kind = String(item.kind ?? "").toLowerCase();
+    if (!Number.isInteger(id) || id < 1 || !["source", "diff", "sketch"].includes(kind) || !item.target) continue;
+    const normalized = {
+      id,
+      kind,
+      target: String(item.target),
+      claim: String(item.claim ?? ""),
+      purpose: item.purpose ? String(item.purpose) : undefined,
+      coverage: item.coverage,
+      textModel: item.text_model,
+    };
+    if (kind === "source") {
+      normalized.source = parseSourceReferences(normalized.target)[0];
+      const cursor = parseSourceReferences(String(item.cursor ?? ""))[0];
+      if (normalized.source && cursor?.path === normalized.source.path) normalized.source.cursorLine = cursor.startLine;
+    } else if (kind === "diff") {
+      normalized.diffReference = parseDiffReferences(normalized.target)[0];
+    } else {
+      normalized.path = normalized.target.replaceAll("\\", "/");
+      normalized.editableTarget = item.editable_target ? String(item.editable_target) : undefined;
+      normalized.editablePath = normalized.editableTarget?.replaceAll("\\", "/");
+    }
+    evidence.push(normalized);
+    byId.set(id, normalized);
+  }
+  return { evidence, evidenceById: byId };
+}
+
+function parseStep(section, index, version) {
+  const { metadata, lines } = version === "2" ? extractV2Metadata(section.lines) : { metadata: {}, lines: section.lines };
+  const headingIndex = lines.findIndex((line) => /^#{1,6}\s+/.test(line.text));
+  const heading = headingIndex >= 0 ? lines[headingIndex] : undefined;
   const headingMatch = heading?.text.match(/^(#{1,6})\s+(.+?)\s*$/);
-  const isFrontPage = index === 0 && section.lines.some((line) => line.text.trim() === "<!-- code-reader: front-page -->");
+  const isFrontPage = metadata.kind === "overview" || (index === 0 && lines.some((line) => line.text.trim() === "<!-- code-reader: front-page -->"));
   const body = [];
   const sources = [];
   const diffReferences = [];
   let target;
 
-  for (let lineIndex = 0; lineIndex < section.lines.length; lineIndex += 1) {
-    const line = section.lines[lineIndex];
+  for (let lineIndex = 0; lineIndex < lines.length; lineIndex += 1) {
+    const line = lines[lineIndex];
     const value = line.text.trim();
     if (lineIndex === headingIndex || value === "<!-- code-reader: front-page -->") {
       continue;
@@ -170,15 +281,25 @@ function parseStep(section, index) {
     body.push(line.text);
   }
 
+  const normalizedEvidence = normalizeEvidence(metadata);
+  for (const item of normalizedEvidence.evidence) {
+    if (item.source) sources.push(item.source);
+    if (item.diffReference) diffReferences.push(item.diffReference);
+  }
+
   return {
     kind: isFrontPage ? "front_page" : "step",
-    id: isFrontPage ? "front" : String(index + 1),
+    id: isFrontPage ? "front" : String(metadata.id ?? index + 1),
     title: headingMatch?.[2] ?? `Step ${index + 1}`,
     depth: headingMatch ? headingMatch[1].length : 1,
     body: body.join("\n").trim(),
     sources,
     diffReferences,
     target,
+    metadata,
+    mapAnchor: metadata.map_anchor,
+    evidence: normalizedEvidence.evidence,
+    evidenceById: normalizedEvidence.evidenceById,
     startLine: section.startLine,
   };
 }
@@ -190,13 +311,16 @@ export function parseCodeReaderDocument(text, options = {}) {
   if (type !== "code-reader" && type !== "code-reader-diff") {
     throw new Error("Expected frontmatter type `code-reader` or `code-reader-diff`.");
   }
+  if (frontmatter.version !== "2") {
+    throw new Error("Expected Code Reader format version `2`.");
+  }
 
   return {
     type,
     frontmatter,
     markdownPath: options.markdownPath,
     markdownDirectory: options.markdownPath ? path.dirname(options.markdownPath) : undefined,
-    steps: splitSections(lines, startIndex).map(parseStep),
+    steps: splitSections(lines, startIndex).map((section, index) => parseStep(section, index, frontmatter.version)),
   };
 }
 

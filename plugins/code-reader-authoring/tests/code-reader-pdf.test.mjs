@@ -40,7 +40,7 @@ test("writes the default PDF output beside its Markdown input", async () => {
   const markdownPath = path.join(temporaryDirectory, "walkthrough.md");
   const output = defaultOutputPath(markdownPath);
 
-  await writeFile(markdownPath, ["---", "type: code-reader", "version: 1", "---", "", "# Overview"].join("\n"), "utf8");
+  await writeFile(markdownPath, ["---", "type: code-reader", "version: 2", "feature: overview", "---", "", "# Overview"].join("\n"), "utf8");
   try {
     await main([markdownPath, "--root", temporaryDirectory]);
     await access(output);
@@ -60,10 +60,128 @@ test("parses source walkthrough steps and Source ranges", async () => {
   assert.equal(document.steps[0].kind, "front_page");
   assert.deepEqual(document.steps[1].sources[0], {
     path: "src/app.lua",
-    startLine: 12,
-    endLine: 21,
+    startLine: 13,
+    endLine: 23,
     expectedHash: undefined,
   });
+});
+
+test("parses v2 stage evidence and rejects v1 documents", () => {
+  const markdown = [
+    "---",
+    "type: code-reader",
+    "version: 2",
+    "feature: request-flow",
+    "---",
+    "# Overview",
+    "```code-reader",
+    "kind: overview",
+    "id: request-flow",
+    "state:",
+    "  status: not_applicable",
+    "  reason: Overview has no runtime transition.",
+    "responsibility:",
+    "  status: applicable",
+    "  items:",
+    "    - owner: app.handle",
+    "      action: Coordinate the lifecycle",
+    "```",
+    "---",
+    "# 1. Validate",
+    "```code-reader",
+    "kind: stage",
+    "id: validate",
+    "evidence:",
+    "  - id: 1",
+    "    kind: source",
+    "    target: src/request.lua#L15-L25",
+    "    cursor: src/request.lua#L18",
+    "    claim: Validation establishes the dispatch invariant.",
+    "  - id: 2",
+    "    kind: sketch",
+    "    target: .code_reader/assets/validate.svg",
+    "    editable_target: .code_reader/assets/validate.excalidraw",
+    "    claim: Validation transfers ownership across the boundary.",
+    "    text_model:",
+    "      claim: Validated requests cross the boundary.",
+    "      nodes:",
+    "        - id: decoded",
+    "          label: Decoded request",
+    "          owner: app.handle",
+    "          state: decoded",
+    "        - id: validated",
+    "          label: Validated request",
+    "          owner: dispatcher",
+    "          state: validated",
+    "      edges:",
+    "        - from: decoded",
+    "          to: validated",
+    "          label: validate",
+    "```",
+    "The invariant is established in [1](code-reader://evidence/1).",
+    "The handoff is shown in [2](code-reader://evidence/2).",
+  ].join("\n");
+
+  const document = parseCodeReaderDocument(markdown);
+  assert.equal(document.steps[0].kind, "front_page");
+  assert.equal(document.steps[1].metadata.id, "validate");
+  assert.equal(document.steps[1].evidence[0].source.cursorLine, 18);
+  assert.equal(document.steps[1].evidenceById.get(2).textModel.nodes[1].owner, "dispatcher");
+  assert.equal(document.steps[1].evidenceById.get(2).editablePath, ".code_reader/assets/validate.excalidraw");
+  assert.throws(
+    () => parseCodeReaderDocument(markdown.replace("version: 2", "version: 1")),
+    /format version `2`/,
+  );
+});
+
+test("renders v2 numbered source and sketch evidence after its explanation", async () => {
+  const temporaryDirectory = await mkdtemp(path.join(os.tmpdir(), "code-reader-v2-evidence-pdf-"));
+  const markdownPath = path.join(temporaryDirectory, "walkthrough.md");
+  await writeFile(path.join(temporaryDirectory, "example.lua"), "return true\n", "utf8");
+  await writeFile(
+    path.join(temporaryDirectory, "flow.svg"),
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 50"><text x="5" y="25">flow</text></svg>',
+    "utf8",
+  );
+  await writeFile(
+    markdownPath,
+    [
+      "---", "type: code-reader", "version: 2", "feature: evidence-flow", "---",
+      "# Overview", "```code-reader", "kind: overview", "id: evidence-flow",
+      "question: What is the feature flow?", "state:", "  status: not_applicable", "  reason: Overview is descriptive.",
+      "responsibility:", "  status: applicable", "  items:", "    - owner: example", "      action: Own the flow", "```",
+      "---", "# 1. Explain flow", "```code-reader", "kind: stage", "id: explain-flow",
+      "question: How does the result flow?", "trigger: Example runs", "state:", "  status: applicable", "  changes:",
+      "    - subject: result", "      owner: example", "      before: pending", "      cause: return", "      after: complete", "      invariant: result exists",
+      "responsibility:", "  status: applicable", "  items:", "    - owner: example", "      action: Return the result",
+      "failure:", "  status: not_applicable", "  reason: Example has no failure path.", "evidence:",
+      "  - id: 1", "    kind: source", "    target: example.lua#L1", "    claim: The return creates the result.",
+    "  - id: 2", "    kind: sketch", "    target: flow.svg", "    editable_target: flow.excalidraw", "    claim: The sketch shows the responsibility handoff.",
+    "    purpose: handoff-map",
+      "    text_model:", "      claim: The result moves through the example.", "      nodes:", "        - id: input", "          label: Input", "          owner: caller", "          state: pending",
+      "        - id: result", "          label: Result", "          owner: example", "          state: complete", "      edges:", "        - from: input", "          to: result", "          label: return",
+      "```", "The implementation is [1](code-reader://evidence/1).", "The model is [2](code-reader://evidence/2).",
+    ].join("\n"),
+    "utf8",
+  );
+  try {
+    const document = parseCodeReaderDocument(await readFile(markdownPath, "utf8"), { markdownPath });
+    const html = await renderCodeReaderHtml(document, { root: temporaryDirectory, padding: 0 });
+    assert.match(html, /href="#evidence-explain-flow-1"/);
+    assert.match(html, /id="evidence-explain-flow-1"/);
+    assert.match(html, /\[1\] Source/);
+    assert.match(html, /id="evidence-explain-flow-2"/);
+    assert.match(html, /handoff map/);
+    assert.match(html, /<svg xmlns="http:\/\/www\.w3\.org\/2000\/svg"/);
+    assert.match(html, /State changes/);
+    assert.doesNotMatch(html, /\| Subject \| Owner \| Before \|/);
+    assert.ok(
+      html.indexOf('id="evidence-explain-flow-2"') < html.indexOf("State changes"),
+      "the relationship map appears before state bullets",
+    );
+  } finally {
+    await rm(temporaryDirectory, { recursive: true, force: true });
+  }
 });
 
 test("renders automatic and manual target definitions on explanation and code pages", async () => {
@@ -88,7 +206,7 @@ test("renders automatic and manual target definitions on explanation and code pa
     [
       "---",
       "type: code-reader",
-      "version: 1",
+      "version: 2",
       "---",
       "<!-- code-reader: front-page -->",
       "# Overview",
@@ -148,7 +266,7 @@ test("omits the target label when the source AST cannot be parsed", async () => 
     [
       "---",
       "type: code-reader",
-      "version: 1",
+      "version: 2",
       "---",
       "<!-- code-reader: front-page -->",
       "# Overview",
@@ -194,7 +312,7 @@ test("uses the primary Diff side to render its target definition", async () => {
     [
       "---",
       "type: code-reader-diff",
-      "version: 1",
+      "version: 2",
       "diff: request.diff",
       "---",
       "<!-- code-reader: front-page -->",
@@ -258,7 +376,7 @@ test("uses a focused Diff range instead of the whole hunk for its target definit
     [
       "---",
       "type: code-reader-diff",
-      "version: 1",
+      "version: 2",
       "diff: request.diff",
       "---",
       "<!-- code-reader: front-page -->",
@@ -443,7 +561,7 @@ test("crops a large contiguous diff block to the selected rows", () => {
   assert.equal(snippet.rows[0].after.focused, true);
 });
 
-test("generates a PDF with Mermaid and separate portrait and landscape pages", async () => {
+test("generates a map-first PDF with separate portrait and landscape pages", async () => {
   const markdownPath = path.join(demoRoot, ".code_reader", "walkthrough.md");
   const markdown = await readFile(markdownPath, "utf8");
   const document = parseCodeReaderDocument(markdown, { markdownPath });
@@ -452,12 +570,22 @@ test("generates a PDF with Mermaid and separate portrait and landscape pages", a
   const output = path.join(temporaryDirectory, "walkthrough.pdf");
 
   try {
-    assert.match(html, /class="mermaid"/);
+    assert.match(html, /relationship-map--execution-map/);
+    assert.match(html, /semantic-position-map/);
+    assert.match(html, /Current explanation scope/);
+    const parseExplanation = html.match(
+      /<h1>2\. Normalize optional request data<\/h1>[\s\S]*?<\/article>\n<\/div>\n<\/section>/,
+    )?.[0];
+    assert.ok(parseExplanation);
+    assert.match(parseExplanation, /semantic-position-map__node is-current"[^>]*>[\s\S]*?Parsed request/);
+    assert.doesNotMatch(parseExplanation, /semantic-position-map__node is-current"[^>]*>[\s\S]*?Raw request/);
+    assert.match(parseExplanation, /semantic-position-map__edge is-current/);
+    assert.doesNotMatch(html, /class="mermaid"/);
     const result = await writePdfFromHtml(html, output, await findBrowserExecutable());
     const pdf = await PDFDocument.load(await readFile(output));
     const dimensions = pdf.getPages().map((page) => page.getSize());
 
-    assert.equal(result.mermaidCount > 0, true);
+    assert.equal(result.mermaidCount, 0);
     assert.equal(dimensions.some((size) => size.height > size.width), true);
     assert.equal(dimensions.some((size) => size.width > size.height), true);
   } finally {
@@ -509,7 +637,7 @@ test("marks screen explanations for A4-width content-sized pages", async () => {
     [
       "---",
       "type: code-reader",
-      "version: 1",
+      "version: 2",
       "---",
       "<!-- code-reader: front-page -->",
       "# Overview",
@@ -554,7 +682,7 @@ test("generates a screen-layout code page without wrapping a long source line", 
     [
       "---",
       "type: code-reader",
-      "version: 1",
+      "version: 2",
       "---",
       "",
       "<!-- code-reader: front-page -->",

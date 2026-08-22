@@ -185,22 +185,23 @@ function renderTargetDefinition(targets) {
   return `<strong class="target-definition">${escapeHtml(labels.join(" · "))}</strong>`;
 }
 
-async function renderSourceSection(reference, sourceLines, padding, screenPageName, targets) {
+async function renderSourceSection(reference, sourceLines, padding, screenPageName, targets, evidence, anchor) {
   const snippet = buildSourceSnippet(sourceLines, reference, padding);
   const rows = await renderCodeRows(snippet.lines, reference.path);
   return [
-    `<section class="pdf-section pdf-section--code"${screenPageAttributes(screenPageName, "code")}>`,
+    `<section id="${escapeHtml(anchor || "")}" class="pdf-section pdf-section--code"${screenPageAttributes(screenPageName, "code")}>`,
     '<header class="code-header">',
-    `<span>Source</span><strong>${escapeHtml(reference.path)}</strong>`,
+    `<span>${evidence ? `[${evidence.id}] Source` : "Source"}</span><strong>${escapeHtml(reference.path)}</strong>`,
     renderTargetDefinition(targets),
     `<span>L${reference.startLine}-L${reference.endLine}</span>`,
     "</header>",
+    evidence ? `<p class="evidence-claim">${escapeHtml(evidence.claim)}</p>` : "",
     `<div class="code-block"${screenContentAttributes(screenPageName)}>${rows}</div>`,
     "</section>",
   ].join("\n");
 }
 
-async function renderDiffSection(reference, hunk, analysis, padding, screenPageName, targets) {
+async function renderDiffSection(reference, hunk, analysis, padding, screenPageName, targets, evidence, anchor) {
   const snippet = renderDiffSnippet(hunk, {
     beforeLines: analysis.beforeLines,
     afterLines: analysis.afterLines,
@@ -214,16 +215,57 @@ async function renderDiffSection(reference, hunk, analysis, padding, screenPageN
     renderDiffRows(afterRows, reference.path, Boolean(reference.side)),
   ]);
   return [
-    `<section class="pdf-section pdf-section--code"${screenPageAttributes(screenPageName, "code")}>`,
+    `<section id="${escapeHtml(anchor || "")}" class="pdf-section pdf-section--code"${screenPageAttributes(screenPageName, "code")}>`,
     '<header class="code-header">',
-    `<span>Diff ${escapeHtml(reference.hunkId)}</span><strong>${escapeHtml(reference.path)}</strong>`,
+    `<span>${evidence ? `[${evidence.id}] ` : ""}Diff ${escapeHtml(reference.hunkId)}</span><strong>${escapeHtml(reference.path)}</strong>`,
     renderTargetDefinition(targets),
     `<span>${escapeHtml(analysis.status)}</span>`,
     "</header>",
+    evidence ? `<p class="evidence-claim">${escapeHtml(evidence.claim)}</p>` : "",
     `<div class="diff-grid"${screenContentAttributes(screenPageName)}>`,
     `<section><h2>Before</h2><div class="code-block">${before}</div></section>`,
     `<section><h2>After</h2><div class="code-block">${after}</div></section>`,
     "</div>",
+    "</section>",
+  ].join("\n");
+}
+
+async function readSketchSvg(root, evidence) {
+  const sketchPath = path.resolve(root, evidence.path);
+  let svg;
+  try {
+    svg = await readFile(sketchPath, "utf8");
+  } catch (error) {
+    throw new Error(`Cannot read sketch SVG ${evidence.path}: ${error.message}`);
+  }
+  if (!/<svg\b/i.test(svg)) {
+    throw new Error(`Sketch asset is not an SVG: ${evidence.path}`);
+  }
+  return svg;
+}
+
+function isRelationshipMap(evidence) {
+  return evidence.kind === "sketch" && /(?:^|-)(?:execution|handoff|state|structure)-map$/.test(evidence.purpose ?? "");
+}
+
+function renderInlineRelationshipMap(evidence, svg, anchor) {
+  return [
+    `<figure id="${escapeHtml(anchor)}" class="relationship-map relationship-map--${escapeHtml(evidence.purpose)}">`,
+    `<figcaption><strong>${escapeHtml(evidence.purpose.replaceAll("-", " "))}</strong> — ${escapeHtml(evidence.claim)}</figcaption>`,
+    `<div class="relationship-map-svg">${svg}</div>`,
+    "</figure>",
+  ].join("\n");
+}
+
+async function renderSketchSection(root, evidence, screenPageName, anchor) {
+  const svg = await readSketchSvg(root, evidence);
+  return [
+    `<section id="${escapeHtml(anchor)}" class="pdf-section pdf-section--sketch"${screenPageAttributes(screenPageName, "sketch")}>`,
+    '<header class="code-header">',
+    `<span>[${evidence.id}] Sketch</span><strong>${escapeHtml(evidence.path)}</strong>`,
+    "</header>",
+    `<p class="evidence-claim">${escapeHtml(evidence.claim)}</p>`,
+    `<div class="sketch-svg"${screenContentAttributes(screenPageName)}>${svg}</div>`,
     "</section>",
   ].join("\n");
 }
@@ -244,7 +286,154 @@ async function renderDiffRows(rows, filePath, showFocusedRange) {
   return wrapFocusedRange(rows, lines, showFocusedRange);
 }
 
-function renderExplanationSection(step, index, total, screenPageName, targets) {
+function executionMaps(document) {
+  const maps = [];
+  for (const step of document.steps) {
+    for (const evidence of step.evidence ?? []) {
+      if (evidence.kind !== "sketch" || evidence.purpose !== "execution-map" || !evidence.textModel) continue;
+      const nodes = new Map((evidence.textModel.nodes ?? []).filter((node) => node?.id).map((node) => [node.id, node]));
+      const edges = new Map((evidence.textModel.edges ?? []).filter((edge) => edge?.id).map((edge) => [edge.id, edge]));
+      maps.push({ id: evidence.id, nodes, edges, edgeList: [...edges.values()] });
+    }
+  }
+  return maps;
+}
+
+function anchorIds(value) {
+  return Array.isArray(value) ? value.filter((item) => typeof item === "string" && item) : [];
+}
+
+function resolveSemanticPosition(document, step) {
+  if (step.metadata?.kind !== "stage") return undefined;
+  const maps = executionMaps(document);
+  if (maps.length === 0) return undefined;
+  const anchor = step.mapAnchor;
+  let map;
+  let nodeIds;
+  let edgeIds;
+  if (anchor && typeof anchor === "object") {
+    map = maps.find((candidate) => candidate.id === Number(anchor.map));
+    nodeIds = anchorIds(anchor.nodes);
+    edgeIds = anchorIds(anchor.edges);
+  } else if (maps.length === 1 && maps[0].nodes.has(step.id)) {
+    map = maps[0];
+    nodeIds = [step.id];
+    edgeIds = [];
+  }
+  if (!map) return undefined;
+  const selectedNodeIds = new Set(nodeIds.filter((id) => map.nodes.has(id)));
+  const focusNodes = new Set(selectedNodeIds);
+  const selectedEdges = new Set(edgeIds.filter((id) => map.edges.has(id)));
+  for (const edgeId of selectedEdges) {
+    const edge = map.edges.get(edgeId);
+    focusNodes.add(edge.from);
+    focusNodes.add(edge.to);
+  }
+  if (focusNodes.size === 0 && selectedEdges.size === 0) return undefined;
+  const incoming = map.edgeList.filter((edge) => !selectedEdges.has(edge.id) && focusNodes.has(edge.to) && !focusNodes.has(edge.from));
+  const outgoing = map.edgeList.filter((edge) => !selectedEdges.has(edge.id) && focusNodes.has(edge.from) && !focusNodes.has(edge.to));
+  return { map, nodeIds, edgeIds, selectedNodeIds, focusNodes, selectedEdges, incoming, outgoing };
+}
+
+function positionLabel(position) {
+  const labels = [
+    ...position.nodeIds.map((id) => position.map.nodes.get(id)?.label ?? id),
+    ...position.edgeIds.map((id) => position.map.edges.get(id)?.label ?? id),
+  ];
+  return labels.filter(Boolean).join(" · ");
+}
+
+function mapNodePositions(map) {
+  const nodes = [...map.nodes.values()];
+  const rank = new Map(nodes.map((node) => [node.id, 0]));
+  for (let pass = 0; pass < nodes.length; pass += 1) {
+    let changed = false;
+    for (const edge of map.edgeList) {
+      if (!rank.has(edge.from) || !rank.has(edge.to)) continue;
+      const nextRank = Math.min(nodes.length - 1, rank.get(edge.from) + 1);
+      if (nextRank > rank.get(edge.to)) {
+        rank.set(edge.to, nextRank);
+        changed = true;
+      }
+    }
+    if (!changed) break;
+  }
+  const columns = new Map();
+  for (const node of nodes) {
+    const nodeRank = rank.get(node.id) ?? 0;
+    if (!columns.has(nodeRank)) columns.set(nodeRank, []);
+    columns.get(nodeRank).push(node);
+  }
+  const maxRank = Math.max(0, ...columns.keys());
+  const tallestColumn = Math.max(1, ...[...columns.values()].map((column) => column.length));
+  const positions = new Map();
+  for (const [nodeRank, column] of columns) {
+    column.forEach((node, index) => positions.set(node.id, { x: 26 + nodeRank * 230, y: 42 + index * 62 }));
+  }
+  return {
+    positions,
+    width: Math.max(520, 52 + (maxRank + 1) * 230),
+    height: Math.max(118, 34 + tallestColumn * 62 + 38),
+  };
+}
+
+function renderSemanticPositionMap(document, step) {
+  const position = resolveSemanticPosition(document, step);
+  if (!position) return "";
+  const { map, selectedNodeIds, focusNodes, selectedEdges, incoming, outgoing } = position;
+  const adjacentNodes = new Set([
+    ...[...focusNodes].filter((id) => !selectedNodeIds.has(id)),
+    ...incoming.flatMap((edge) => [edge.from, edge.to]),
+    ...outgoing.flatMap((edge) => [edge.from, edge.to]),
+  ]);
+  const adjacentEdges = new Set([...incoming, ...outgoing].map((edge) => edge.id));
+  const { positions, width, height } = mapNodePositions(map);
+  const titleId = `semantic-position-${String(step.id).replace(/[^\w-]/g, "-")}`;
+  const scope = positionLabel(position);
+  const edgeMarkup = map.edgeList.map((edge) => {
+    const from = positions.get(edge.from);
+    const to = positions.get(edge.to);
+    if (!from || !to) return "";
+    const current = selectedEdges.has(edge.id);
+    const adjacent = adjacentEdges.has(edge.id);
+    const className = current ? " is-current" : adjacent ? " is-adjacent" : " is-muted";
+    const startX = from.x + 126;
+    const startY = from.y + 17;
+    const endX = to.x;
+    const endY = to.y + 17;
+    const middleX = (startX + endX) / 2;
+    const middleY = Math.min(startY, endY) - 8;
+    return [
+      `<g class="semantic-position-map__edge${className}">`,
+      `<path d="M ${startX} ${startY} C ${middleX} ${startY}, ${middleX} ${endY}, ${endX} ${endY}" marker-end="url(#semantic-position-arrow)"/>`,
+      edge.label ? `<text x="${middleX}" y="${middleY}" text-anchor="middle">${escapeHtml(String(edge.label))}</text>` : "",
+      "</g>",
+    ].join("");
+  }).join("\n");
+  const nodeMarkup = [...map.nodes.values()].map((node) => {
+    const nodePosition = positions.get(node.id);
+    if (!nodePosition) return "";
+    const className = selectedNodeIds.has(node.id) ? " is-current" : adjacentNodes.has(node.id) ? " is-adjacent" : " is-muted";
+    return [
+      `<g class="semantic-position-map__node${className}" transform="translate(${nodePosition.x} ${nodePosition.y})">`,
+      '<rect width="126" height="34" rx="7"/>',
+      `<text x="63" y="21" text-anchor="middle">${escapeHtml(String(node.label ?? node.id))}</text>`,
+      "</g>",
+    ].join("");
+  }).join("\n");
+  return [
+    `<figure class="semantic-position-map" aria-labelledby="${titleId}">`,
+    `<figcaption id="${titleId}"><strong>Execution position</strong><span>Current explanation scope: ${escapeHtml(scope)}</span></figcaption>`,
+    `<svg viewBox="0 0 ${width} ${height}" role="img" aria-label="Current explanation scope: ${escapeHtml(scope)}. Current nodes are emphasized; direct handoffs are secondary.">`,
+    '<defs><marker id="semantic-position-arrow" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto"><path d="M 0 0 L 7 3.5 L 0 7 z"/></marker></defs>',
+    edgeMarkup,
+    nodeMarkup,
+    "</svg>",
+    "</figure>",
+  ].join("\n");
+}
+
+function renderExplanationSection(step, index, total, screenPageName, targets, inlineMaps = [], positionMap = "") {
   return [
     `<section class="pdf-section pdf-section--explanation"${screenPageAttributes(screenPageName, "explanation")}>`,
     `<div class="explanation-content"${screenContentAttributes(screenPageName)}>`,
@@ -253,12 +442,68 @@ function renderExplanationSection(step, index, total, screenPageName, targets) {
     renderTargetDefinition(targets),
     "</header>",
     `<h1>${escapeHtml(step.title)}</h1>`,
+    positionMap,
+    ...inlineMaps,
     '<article class="markdown-body">',
     step.html,
     "</article>",
     "</div>",
     "</section>",
   ].join("\n");
+}
+
+function semanticModelMarkdown(metadata = {}) {
+  const lines = [];
+  if (!metadata || Object.keys(metadata).length === 0) return "";
+  lines.push("## Mental model", "");
+  if (metadata.question) lines.push(`- Question: ${metadata.question}`);
+  if (metadata.trigger) lines.push(`- Trigger: ${metadata.trigger}`);
+  const state = metadata.state ?? {};
+  if (state.status === "applicable") {
+    lines.push("", "### State changes", "");
+    for (const change of state.changes ?? []) {
+      lines.push(
+        `#### ${change.subject ?? "State"}`,
+        "",
+        `- **Owner:** ${change.owner ?? ""}`,
+        `- **Before:** ${change.before ?? ""}`,
+        `- **Change:** ${change.cause ?? ""}`,
+        `- **After:** ${change.after ?? ""}`,
+        `- **Must remain true:** ${change.invariant ?? ""}`,
+        "",
+      );
+    }
+  } else if (state.status === "not_applicable") {
+    lines.push(`- State: N/A — ${state.reason ?? ""}`);
+  }
+  const responsibility = metadata.responsibility ?? {};
+  if (responsibility.status === "applicable") {
+    lines.push("", "### Responsibilities", "");
+    for (const item of responsibility.items ?? []) {
+      const owns = Array.isArray(item.owns) ? item.owns.join(", ") : item.owns ?? "";
+      lines.push(`#### ${item.owner ?? "Owner"}`, "", `- **Does:** ${item.action ?? ""}`);
+      if (owns) lines.push(`- **Owns:** ${owns}`);
+      lines.push("");
+    }
+  } else if (responsibility.status === "not_applicable") {
+    lines.push(`- Responsibility: N/A — ${responsibility.reason ?? ""}`);
+  }
+  const failure = metadata.failure ?? {};
+  if (failure.status === "applicable") {
+    lines.push("", "### Failure and alternate outcomes", "");
+    for (const outcome of failure.outcomes ?? []) lines.push(`- ${outcome.cause ?? ""} → ${outcome.result ?? ""}`);
+  } else if (failure.status === "not_applicable") {
+    lines.push(`- Failure: N/A — ${failure.reason ?? ""}`);
+  }
+  return lines.join("\n");
+}
+
+function evidenceAnchor(step, evidence) {
+  return `evidence-${String(step.id).replace(/[^\w-]/g, "-")}-${evidence.id}`;
+}
+
+function evidenceLinks(html, step) {
+  return html.replace(/href="code-reader:\/\/evidence\/(\d+)"/g, (_match, id) => `href="#${evidenceAnchor(step, { id })}"`);
 }
 
 async function loadSourceLines(root, reference) {
@@ -341,71 +586,54 @@ export async function renderCodeReaderHtml(document, options) {
 
   for (let index = 0; index < document.steps.length; index += 1) {
     const step = document.steps[index];
-    step.html = await markdownToHtml(step.body);
-
-    if (step.kind === "front_page") {
-      sections.push(renderExplanationSection(step, index + 1, document.steps.length, nextScreenPageName("explanation")));
-      continue;
-    }
-
-    if (document.type === "code-reader") {
-      const sourcePages = await Promise.all(step.sources.map(async (reference) => {
-        const sourceLines = await loadSourceLines(root, reference);
-        return { reference, sourceLines, targets: await sourceTargetDefinitions(step, reference, sourceLines) };
-      }));
-      sections.push(
-        renderExplanationSection(
-          step,
-          index + 1,
-          document.steps.length,
-          nextScreenPageName("explanation"),
-          sourcePages[0]?.targets,
-        ),
-      );
-      for (const sourcePage of sourcePages) {
-        sections.push(
-          await renderSourceSection(
-            sourcePage.reference,
-            sourcePage.sourceLines,
-            padding,
-            nextScreenPageName("code"),
-            sourcePage.targets,
-          ),
-        );
+    const legacyEvidence = document.type === "code-reader"
+      ? step.sources.map((source, evidenceIndex) => ({ id: evidenceIndex + 1, kind: "source", source, claim: "" }))
+      : step.diffReferences.map((diffReference, evidenceIndex) => ({ id: evidenceIndex + 1, kind: "diff", diffReference, claim: "" }));
+    const evidence = step.evidence?.length ? step.evidence : legacyEvidence;
+    const pages = [];
+    const inlineMaps = [];
+    for (const item of evidence) {
+      if (item.kind === "source" && item.source) {
+        const sourceLines = await loadSourceLines(root, item.source);
+        pages.push({ item, kind: "source", reference: item.source, sourceLines, targets: await sourceTargetDefinitions(step, item.source, sourceLines) });
+      } else if (item.kind === "diff" && item.diffReference) {
+        const reference = item.diffReference;
+        const file = diffModel?.files.find((candidate) => candidate.path === reference.path);
+        const hunk = file?.hunks.find((candidate) => candidate.id === reference.hunkId);
+        if (!hunk) throw new Error(`Cannot find ${reference.path}#${reference.hunkId} in the referenced diff.`);
+        const analysis = await analyzeFile(root, file);
+        pages.push({ item, kind: "diff", reference, hunk, analysis, targets: await diffTargetDefinitions(step, reference, hunk, analysis) });
+      } else if (item.kind === "sketch") {
+        if (isRelationshipMap(item)) {
+          const anchor = evidenceAnchor(step, item);
+          inlineMaps.push(renderInlineRelationshipMap(item, await readSketchSvg(root, item), anchor));
+        } else {
+          pages.push({ item, kind: "sketch", targets: [] });
+        }
       }
-      continue;
     }
-
-    const diffPages = [];
-    for (const reference of step.diffReferences) {
-      const file = diffModel.files.find((item) => item.path === reference.path);
-      const hunk = file?.hunks.find((item) => item.id === reference.hunkId);
-      if (!hunk) {
-        throw new Error(`Cannot find ${reference.path}#${reference.hunkId} in the referenced diff.`);
-      }
-      const analysis = await analyzeFile(root, file);
-      diffPages.push({ reference, hunk, analysis, targets: await diffTargetDefinitions(step, reference, hunk, analysis) });
-    }
+    step.html = evidenceLinks(await markdownToHtml([step.body, semanticModelMarkdown(step.metadata)].filter(Boolean).join("\n\n")), step);
+    const positionMap = renderSemanticPositionMap(document, step);
     sections.push(
       renderExplanationSection(
         step,
         index + 1,
         document.steps.length,
         nextScreenPageName("explanation"),
-        diffPages[0]?.targets,
+        pages.find((page) => page.targets?.length)?.targets,
+        inlineMaps,
+        positionMap,
       ),
     );
-    for (const diffPage of diffPages) {
-      sections.push(
-        await renderDiffSection(
-          diffPage.reference,
-          diffPage.hunk,
-          diffPage.analysis,
-          padding,
-          nextScreenPageName("code"),
-          diffPage.targets,
-        ),
-      );
+    for (const page of pages) {
+      const anchor = evidenceAnchor(step, page.item);
+      if (page.kind === "source") {
+        sections.push(await renderSourceSection(page.reference, page.sourceLines, padding, nextScreenPageName("code"), page.targets, page.item, anchor));
+      } else if (page.kind === "diff") {
+        sections.push(await renderDiffSection(page.reference, page.hunk, page.analysis, padding, nextScreenPageName("code"), page.targets, page.item, anchor));
+      } else {
+        sections.push(await renderSketchSection(root, page.item, nextScreenPageName("sketch"), anchor));
+      }
     }
   }
 
@@ -424,11 +652,38 @@ html, body { margin: 0; color: #1f2937; background: #fff; font-family: "Malgun G
 .pdf-section { break-before: page; background: #fff; }
 .pdf-section:first-child { break-before: auto; }
 .pdf-section--explanation { page: explanation; font-size: 10.5pt; line-height: 1.7; }
-.pdf-section--code { page: code; break-after: page; color: #1f2937; font-family: "Cascadia Mono", Consolas, monospace; }
+.pdf-section--code, .pdf-section--sketch { page: code; break-after: page; color: #1f2937; font-family: "Cascadia Mono", Consolas, monospace; }
 .explanation-header { display: flex; gap: 4mm; align-items: baseline; color: #64748b; font-size: 9pt; letter-spacing: .04em; text-transform: uppercase; border-bottom: 1px solid #cbd5e1; padding-bottom: 4mm; }
 .target-definition { color: #0f172a; font-family: "Cascadia Mono", Consolas, monospace; font-size: 8.5pt; font-weight: 600; letter-spacing: normal; text-transform: none; }
 .explanation-header .target-definition { margin-left: auto; }
 .code-header .target-definition { font-size: 8.5pt; }
+.evidence-claim { margin: 0; padding: 3mm 4mm; color: #334155; background: #f8fafc; border: 1px solid #bfdbfe; border-top: 0; font: 10pt "Malgun Gothic", "Segoe UI", sans-serif; }
+.sketch-svg { padding: 6mm; border: 1px solid #cbd5e1; border-top: 0; min-height: 120mm; display: grid; place-items: center; }
+.sketch-svg svg { max-width: 100%; max-height: 165mm; width: auto; height: auto; }
+.relationship-map { margin: 0 0 6mm; padding: 4mm; border: 1px solid #bfdbfe; background: #f8fbff; break-inside: avoid; }
+.relationship-map figcaption { margin-bottom: 3mm; color: #334155; font-size: 9.5pt; }
+.relationship-map-svg { display: grid; place-items: center; min-height: 58mm; }
+.relationship-map-svg svg { max-width: 100%; max-height: 88mm; width: auto; height: auto; }
+.semantic-position-map { margin: 0 0 6mm; padding: 3.5mm 4mm; border: 1px solid #bfdbfe; background: #f8fbff; break-inside: avoid; }
+.semantic-position-map figcaption { display: flex; gap: 3mm; align-items: baseline; margin-bottom: 2.5mm; color: #334155; font-size: 9.5pt; }
+.semantic-position-map figcaption strong { color: #1e3a8a; }
+.semantic-position-map svg { display: block; width: 100%; max-height: 72mm; }
+.semantic-position-map__edge path { fill: none; stroke-width: 1.6; }
+.semantic-position-map__edge text { fill: #475569; font: 10px "Malgun Gothic", "Segoe UI", sans-serif; }
+.semantic-position-map__edge.is-muted path { stroke: #cbd5e1; }
+.semantic-position-map__edge.is-muted text { fill: #94a3b8; }
+.semantic-position-map__edge.is-adjacent path { stroke: #64748b; stroke-width: 2.2; }
+.semantic-position-map__edge.is-current path { stroke: #2563eb; stroke-width: 3.4; }
+.semantic-position-map__edge.is-current text { fill: #1d4ed8; font-weight: 700; }
+.semantic-position-map__node rect { stroke-width: 1.2; }
+.semantic-position-map__node text { font: 10px "Malgun Gothic", "Segoe UI", sans-serif; }
+.semantic-position-map__node.is-muted rect { fill: #f8fafc; stroke: #cbd5e1; }
+.semantic-position-map__node.is-muted text { fill: #94a3b8; }
+.semantic-position-map__node.is-adjacent rect { fill: #e2e8f0; stroke: #64748b; stroke-width: 1.8; }
+.semantic-position-map__node.is-adjacent text { fill: #334155; }
+.semantic-position-map__node.is-current rect { fill: #dbeafe; stroke: #2563eb; stroke-width: 3; }
+.semantic-position-map__node.is-current text { fill: #1e3a8a; font-weight: 700; }
+.semantic-position-map marker path { fill: context-stroke; }
 h1 { color: #0f172a; font-size: 24pt; line-height: 1.25; margin: 8mm 0 7mm; }
 .markdown-body h2 { color: #1e293b; font-size: 15pt; margin-top: 7mm; }
 .markdown-body h3 { color: #334155; font-size: 12pt; margin-top: 5mm; }
