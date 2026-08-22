@@ -1,7 +1,7 @@
 {
   "name": "code-reader-authoring",
   "version": "0.2.1+codex.20260822095552",
-  "description": "Author v2 Code Reader walkthroughs with evidence, editable Excalidraw sketches, and PDF output.",
+  "description": "Author, review, and export v2 Code Reader walkthroughs with evidence and editable Excalidraw sketches.",
   "author": {
     "name": "KudoLayton",
     "email": "lhslhg@gmail.com"
@@ -19,8 +19,9 @@
       "Write",
       "Validate",
       "Generate",
-      "Sketch"
+      "Sketch",
+      "Review"
     ],
-    "defaultPrompt": "Use Code Reader Authoring to explain this feature or diff with v2 evidence and export it as PDF."
+    "defaultPrompt": "Use Code Reader Authoring to explain, review, or export this feature or diff with v2 evidence."
   }
 }

@@ -129,20 +129,43 @@ local function file_ref(state, bufnr, line1, line2)
   return range_ref(relative_path(name, state and state.root or nil), math.min(line1, line2), math.max(line1, line2))
 end
 
-function M.copy(state, opts)
+function M.reference(state, opts)
   opts = opts or {}
   local bufnr = opts.bufnr or vim.api.nvim_get_current_buf()
   local line1 = opts.line1 or vim.fn.line(".")
   local line2 = opts.line2 or line1
   local map = state and state.refcopy_maps and state.refcopy_maps[bufnr] or nil
-  local text = nil
 
   if map then
-    text = mapped_ref(state, map, bufnr, line1, line2) or selection_text(bufnr, line1, line2)
-  else
-    text = file_ref(state, bufnr, line1, line2) or selection_text(bufnr, line1, line2)
+    local text = mapped_ref(state, map, bufnr, line1, line2)
+    if text then
+      local first = map[math.min(line1, line2)]
+      return text, first and first.kind or nil
+    end
+    if opts.allow_text then
+      return selection_text(bufnr, line1, line2), "text"
+    end
+    return nil
   end
 
+  local text = file_ref(state, bufnr, line1, line2)
+  if text then
+    return text, "source"
+  end
+  if opts.allow_text then
+    return selection_text(bufnr, line1, line2), "text"
+  end
+  return nil
+end
+
+function M.copy(state, opts)
+  opts = opts or {}
+  local text = M.reference(state, {
+    bufnr = opts.bufnr,
+    line1 = opts.line1,
+    line2 = opts.line2,
+    allow_text = true,
+  })
   copy_text(text, opts.register or opts.clipboard_register or "+")
   if opts.notify ~= false then
     vim.notify("Code Reader: copied reference", vim.log.levels.INFO)

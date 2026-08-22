@@ -34,6 +34,7 @@ Using lazy.nvim:
     "CodeReaderEditSketch",
     "CodeReaderClose",
     "CodeReaderCopyRef",
+    "CodeReaderAddComment",
   },
 }
 ```
@@ -69,6 +70,18 @@ require("code_reader").setup({
 
 The import command loads the local canvas; open `http://127.0.0.1:3000` in a browser to edit or inspect it.
 
+## Add review comments
+
+In the displayed source or diff panel, select a code range and run:
+
+```vim
+:'<,'>CodeReaderAddComment
+```
+
+Code Reader opens a floating Markdown buffer. Use `:wq` to append the comment; press `q` or use `:q!` to discard it. A walkthrough at `.code_reader/flow.md` stores comments in `.code_reader/flow.reviews.jsonl`; each record keeps the walkthrough stage, selected evidence when available, exact source/diff reference, comment text, and timestamp. Explanation, overview, and sketch buffers are intentionally not comment targets.
+
+Use the `read-code-review-comments` authoring skill when asking Codex to inspect or resolve this feedback. It finds the corresponding sidecar, walkthrough stage, and current code range automatically; reading comments alone does not change code or walkthroughs.
+
 ## Author walkthroughs with Codex
 
 The local marketplace at `.agents/plugins/marketplace.json` provides the `code-reader-authoring` plugin. Its skills create v2 feature and diff walkthroughs, validate them, and export PDFs. It also registers the local `excalidraw` MCP server through `npx -y mcp-excalidraw-server@2.0.0`.
@@ -82,7 +95,7 @@ For a sketch, retain both assets in the target project:
 
 The MCP is an authoring dependency, not a reading or CI dependency. The authoring workflow creates and inspects the editable scene, exports a preview SVG, then records an equivalent `text_model` in Markdown. Use execution maps for the whole runtime space, handoff maps for ownership changes, state maps for lifecycles, and structure maps for static boundaries. Do not use a sketch where Mermaid or labelled bullet cards explain the relation more directly.
 
-The complete v2 contract, sketch criteria, reviewer format, and validator command are in [the authoring reference](plugins/code-reader-authoring/references/code-reader-markdown-format.md).
+The complete v2 contract, sketch criteria, reviewer format, and validator command are in [the authoring reference](plugins/code-reader-authoring/references/code-reader-markdown-format.md). The review sidecar schema and discovery rules are in [the review-comment reference](plugins/code-reader-authoring/references/code-review-comment-format.md).
 
 ## Export PDF
 

@@ -6,6 +6,7 @@ local symbols = require("code_reader.symbols")
 local diff = require("code_reader.diff")
 local refcopy = require("code_reader.refcopy")
 local sketch = require("code_reader.sketch")
+local review = require("code_reader.review")
 
 local M = {}
 
@@ -455,6 +456,11 @@ end
 function M.copy_ref(opts)
   opts = opts or {}
   return refcopy.copy(state, opts)
+end
+
+function M.add_comment(opts)
+  opts = opts or {}
+  return review.add(state, opts)
 end
 
 return M
