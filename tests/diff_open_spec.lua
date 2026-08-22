@@ -312,7 +312,7 @@ vim.fn.writefile(diff_lines, diff_file)
 vim.fn.writefile({
   "---",
   "type: code-reader-diff",
-  "version: 1",
+  "version: 2",
   "diff: ./change.diff",
   "---",
   "",
@@ -637,7 +637,7 @@ if cpp_query_ok then
   vim.fn.writefile({
     "---",
     "type: code-reader-diff",
-    "version: 1",
+    "version: 2",
     "diff: ./change-cpp.diff",
     "---",
     "",

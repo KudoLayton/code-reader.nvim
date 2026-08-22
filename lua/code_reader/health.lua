@@ -1,6 +1,7 @@
 local M = {}
 local log = require("code_reader.log")
 local syntax = require("code_reader.syntax")
+local sketch = require("code_reader.sketch")
 
 local function plugin_root()
   local source = debug.getinfo(1, "S").source:gsub("^@", "")
@@ -131,6 +132,23 @@ local function inspect_debug(checks, options)
   end
 end
 
+local function inspect_sketch(checks, options, env)
+  local sketch_options = options.sketch or {}
+  if sketch_options.enabled == false then
+    add(checks, "info", "sketch", "Sketch rendering is disabled")
+    return
+  end
+  local available, message = sketch.inspect()
+  add(checks, available and "ok" or "info", "sketch-image", message)
+  local magick = run_version(env, "magick")
+  add(checks, magick and "ok" or "info", "sketch-magick", magick and "ImageMagick found: " .. magick or "ImageMagick not found; image.nvim Sixel rendering may be unavailable")
+  if sketch_options.editor_command then
+    add(checks, "ok", "sketch-editor", "Sketch editor command configured")
+  else
+    add(checks, "info", "sketch-editor", "Sketch editor command is not configured")
+  end
+end
+
 function M.inspect(opts)
   opts = opts or {}
   local root = opts.root or plugin_root()
@@ -183,6 +201,7 @@ function M.inspect(opts)
 
   inspect_syntax(checks, opts, env)
   inspect_debug(checks, options)
+  inspect_sketch(checks, options, env)
 
   return checks
 end

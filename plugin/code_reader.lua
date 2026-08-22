@@ -65,3 +65,9 @@ end, {
   nargs = "?",
   desc = "Copy a Code Reader reference for the selected range",
 })
+
+vim.api.nvim_create_user_command("CodeReaderEditSketch", function()
+  require("code_reader").edit_sketch()
+end, {
+  desc = "Open the selected Code Reader sketch in its configured editor",
+})

@@ -133,4 +133,109 @@ eq(diff_doc.steps[2].diff_refs[3].padding, 2, "diff ref padding")
 eq(diff_doc.steps[2].diff_refs[4].side, "new", "diff ref alias side")
 eq(diff_doc.steps[2].diff_refs[4].start_bound.mode, "relative", "diff ref shorthand relative start")
 
+local v2_sample = [[
+---
+type: code-reader
+version: 2
+feature: request-flow
+---
+
+# Request flow overview
+
+```code-reader
+kind: overview
+id: request-flow
+question: How does a request become a response?
+state:
+  status: not_applicable
+  reason: The overview does not change runtime state.
+responsibility:
+  status: applicable
+  items:
+    - owner: app.handle
+      action: Coordinate the request lifecycle
+      owns:
+        - lifecycle order
+```
+
+The stages below explain the lifecycle.
+
+---
+# 1. Validate request
+
+```code-reader
+kind: stage
+id: validate-request
+question: How is a decoded request accepted?
+trigger: app.handle calls validate_request
+state:
+  status: applicable
+  changes:
+    - subject: request
+      owner: request.validate_request
+      before: decoded
+      cause: validation succeeds
+      after: validated
+      invariant: invalid requests do not dispatch
+responsibility:
+  status: applicable
+  items:
+    - owner: request.validate_request
+      action: Reject unsupported methods
+      owns:
+        - method policy
+failure:
+  status: applicable
+  outcomes:
+    - cause: unsupported method
+      result: error response
+evidence:
+  - id: 1
+    kind: source
+    target: src/request.lua#L15-L25
+    cursor: src/request.lua#L18
+    claim: Validation decides whether dispatch may continue.
+  - id: 2
+    kind: sketch
+    purpose: handoff-map
+    target: .code_reader/assets/request-validation.svg
+    editable_target: .code_reader/assets/request-validation.excalidraw
+    claim: Validation transfers a request across the dispatch boundary.
+    text_model:
+      claim: Validated requests cross the boundary.
+      nodes:
+        - id: decoded
+          label: Decoded request
+          owner: app.handle
+          state: decoded
+        - id: validated
+          label: Validated request
+          owner: dispatcher
+          state: validated
+      edges:
+        - from: decoded
+          to: validated
+          label: validate
+```
+
+Validation establishes the dispatch invariant [1](code-reader://evidence/1).
+The ownership handoff is summarized visually [2](code-reader://evidence/2).
+]]
+
+local v2_doc = parser.parse(v2_sample, { path = ".code_reader/v2.md" })
+eq(v2_doc.frontmatter.version, "2", "v2 frontmatter version")
+eq(v2_doc.version_supported, true, "v2 version supported")
+eq(v2_doc.front_page_index, 1, "v2 overview is front page")
+eq(v2_doc.steps[1].kind, "front_page", "v2 overview kind")
+eq(v2_doc.steps[2].metadata.kind, "stage", "v2 stage metadata kind")
+eq(v2_doc.steps[2].metadata.state.changes[1].after, "validated", "v2 nested state metadata")
+eq(#v2_doc.steps[2].evidence, 2, "v2 evidence count")
+eq(v2_doc.steps[2].evidence[1].source.path, "src/request.lua", "v2 source evidence path")
+eq(v2_doc.steps[2].evidence[1].source.cursor_line, 18, "v2 source evidence cursor")
+eq(v2_doc.steps[2].evidence[2].kind, "sketch", "v2 sketch evidence kind")
+eq(v2_doc.steps[2].evidence[2].purpose, "handoff-map", "v2 sketch purpose")
+eq(v2_doc.steps[2].evidence[2].editable_path, ".code_reader/assets/request-validation.excalidraw", "v2 sketch editable path")
+eq(v2_doc.steps[2].evidence_by_id[2].text_model.nodes[2].owner, "dispatcher", "v2 sketch text model")
+eq(v2_doc.steps[2].content:find("```code%-reader", 1), nil, "v2 metadata fence hidden from content")
+
 print("parser_spec: ok")

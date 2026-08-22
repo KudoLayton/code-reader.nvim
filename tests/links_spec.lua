@@ -40,6 +40,12 @@ eq(symbol.label, "run", "symbol label")
 local source = at("[parser](src/parser.lua#L5-L12)", "parser")
 eq(source, nil, "source link is not an actionable link")
 
+local evidence_line = "The dispatch boundary is [2](code-reader://evidence/2)."
+local evidence = at(evidence_line, "[2]")
+eq(evidence.kind, "evidence", "evidence link kind")
+eq(evidence.id, 2, "evidence link id")
+eq(evidence.label, "2", "evidence link label")
+
 local missing_query = at("[bad](<treesitter://src/app.lua>)", "bad")
 eq(missing_query.kind, "invalid", "missing query kind")
 eq(missing_query.reason, "missing-query", "missing query reason")

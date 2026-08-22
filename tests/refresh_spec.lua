@@ -32,7 +32,7 @@ local function write_source_explanation(include_second, body)
   local lines = {
     "---",
     "type: code-reader",
-    "version: 1",
+    "version: 2",
     "---",
     "",
     "<!-- code-reader: front-page -->",
@@ -85,7 +85,7 @@ local preserved_doc = state.doc
 vim.fn.writefile({
   "---",
   "type: code-reader-diff",
-  "version: 1",
+  "version: 2",
   "diff: ./missing.diff",
   "---",
 }, explanation_file)
@@ -105,7 +105,7 @@ vim.fn.writefile({
 vim.fn.writefile({
   "---",
   "type: code-reader-diff",
-  "version: 1",
+  "version: 2",
   "diff: ./change.diff",
   "---",
   "",

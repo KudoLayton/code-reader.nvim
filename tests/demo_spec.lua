@@ -36,6 +36,9 @@ eq(#doc.steps, 6, "demo step count")
 eq(doc.front_page_index, 1, "demo front page index")
 eq(doc.steps[1].kind, "front_page", "demo front page kind")
 eq(#doc.steps[1].sources, 0, "demo front page source count")
+eq(#doc.steps[1].evidence, 1, "demo front page execution map count")
+eq(doc.steps[1].evidence[1].purpose, "execution-map", "demo front page map purpose")
+eq(#doc.steps[1].evidence[1].coverage, 5, "demo front page map coverage")
 
 local forbidden_dirs = {
   "plugin",
@@ -107,7 +110,7 @@ local parsed_diff = diff.parse(table.concat(vim.fn.readfile(diff_path), "\n"))
 
 eq(diff_doc.frontmatter.type, "code-reader-diff", "diff demo frontmatter type")
 eq(diff_doc.frontmatter.diff, "./request-update.diff", "diff demo diff path")
-eq(#diff_doc.steps, 6, "diff demo step count")
+eq(#diff_doc.steps, 5, "diff demo step count")
 eq(diff_doc.front_page_index, 1, "diff demo front page index")
 eq(#parsed_diff.files, 3, "diff demo file count")
 eq(parsed_diff.total_changed_lines, 9, "diff demo changed line count")

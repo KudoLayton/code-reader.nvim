@@ -1,8 +1,10 @@
 local source = require("code_reader.source")
 local mermaid = require("code_reader.mermaid")
+local sketch = require("code_reader.sketch")
 local diff = require("code_reader.diff")
 local diff_render = require("code_reader.diff_render")
 local syntax = require("code_reader.syntax")
+local position = require("code_reader.position")
 
 local M = {}
 
@@ -61,6 +63,81 @@ end
 local function append_mapped_lines(lines, map, new_lines, new_map)
   for index, line in ipairs(new_lines or {}) do
     append_mapped_line(lines, map, line, new_map and new_map[index] or nil)
+  end
+end
+
+local function append_semantic_model(lines, map, step)
+  local metadata = step and step.metadata or {}
+  if not next(metadata) then
+    return
+  end
+  append_mapped_line(lines, map, "")
+  append_mapped_line(lines, map, "## Mental model")
+  append_mapped_line(lines, map, "")
+  if metadata.question then
+    append_mapped_line(lines, map, "- Question: " .. tostring(metadata.question))
+  end
+  if metadata.trigger then
+    append_mapped_line(lines, map, "- Trigger: " .. tostring(metadata.trigger))
+  end
+
+  local state_model = metadata.state or {}
+  if state_model.status == "applicable" then
+    append_mapped_line(lines, map, "")
+    append_mapped_line(lines, map, "### State changes")
+    append_mapped_line(lines, map, "")
+    for _, change in ipairs(state_model.changes or {}) do
+      append_mapped_line(lines, map, "#### " .. tostring(change.subject or "State"))
+      append_mapped_line(lines, map, "")
+      append_mapped_line(lines, map, "- **Owner:** " .. tostring(change.owner or ""))
+      append_mapped_line(lines, map, "- **Before:** " .. tostring(change.before or ""))
+      append_mapped_line(lines, map, "- **Change:** " .. tostring(change.cause or ""))
+      append_mapped_line(lines, map, "- **After:** " .. tostring(change.after or ""))
+      append_mapped_line(lines, map, "- **Must remain true:** " .. tostring(change.invariant or ""))
+      append_mapped_line(lines, map, "")
+    end
+  elseif state_model.status == "not_applicable" then
+    append_mapped_line(lines, map, "- State: N/A — " .. tostring(state_model.reason or ""))
+  end
+
+  local responsibility = metadata.responsibility or {}
+  if responsibility.status == "applicable" then
+    append_mapped_line(lines, map, "")
+    append_mapped_line(lines, map, "### Responsibilities")
+    append_mapped_line(lines, map, "")
+    for _, item in ipairs(responsibility.items or {}) do
+      local owns = item.owns
+      if type(owns) == "table" then
+        owns = table.concat(owns, ", ")
+      end
+      append_mapped_line(lines, map, "#### " .. tostring(item.owner or "Owner"))
+      append_mapped_line(lines, map, "")
+      append_mapped_line(lines, map, "- **Does:** " .. tostring(item.action or ""))
+      if owns and owns ~= "" then
+        append_mapped_line(lines, map, "- **Owns:** " .. tostring(owns))
+      end
+      append_mapped_line(lines, map, "")
+    end
+  elseif responsibility.status == "not_applicable" then
+    append_mapped_line(lines, map, "- Responsibility: N/A — " .. tostring(responsibility.reason or ""))
+  end
+
+  local failure = metadata.failure or {}
+  if failure.status == "applicable" then
+    append_mapped_line(lines, map, "")
+    append_mapped_line(lines, map, "### Failure and alternate outcomes")
+    append_mapped_line(lines, map, "")
+    for _, outcome in ipairs(failure.outcomes or {}) do
+      append_mapped_line(lines, map, "- " .. tostring(outcome.cause or "") .. " → " .. tostring(outcome.result or ""))
+    end
+  elseif failure.status == "not_applicable" then
+    append_mapped_line(lines, map, "- Failure: N/A — " .. tostring(failure.reason or ""))
+  end
+end
+
+local function append_execution_position(lines, map, doc, step)
+  for _, line in ipairs(position.lines(doc, step)) do
+    append_mapped_line(lines, map, line)
   end
 end
 
@@ -166,6 +243,7 @@ local function highlight_code_reader_links(buf)
     local line_index = index - 1
     add_pattern_highlights(buf, line_index, line, "%[%[[^%]]-%]%]", "CodeReaderStepLink")
     add_pattern_highlights(buf, line_index, line, "%[[^%]]-%]%(<treesitter://.-%>%)", "CodeReaderSymbolLink")
+    add_pattern_highlights(buf, line_index, line, "%[[^%]]-%]%(%s*code%-reader://evidence/%d+%)", "CodeReaderEvidenceLink")
     add_target_highlight(buf, line_index, line, "Source", "CodeReaderSourceTarget")
     add_target_highlight(buf, line_index, line, "Diff", "CodeReaderDiffTarget")
   end
@@ -503,6 +581,56 @@ local function source_ref_label(source_ref)
     suffix = suffix .. "-L" .. tostring(source_ref.end_line)
   end
   return source_ref.path .. suffix
+end
+
+local function selected_evidence(state, step)
+  if not (step and step.evidence_by_id) then
+    return nil
+  end
+  local id = state.selected_evidence
+  if id and step.evidence_by_id[id] then
+    return step.evidence_by_id[id]
+  end
+  for _, evidence in ipairs(step.evidence or {}) do
+    if evidence.kind == "sketch" and evidence.purpose and evidence.purpose:match("%-map$") then
+      return evidence
+    end
+  end
+  return step.evidence and step.evidence[1] or nil
+end
+
+local function sketch_fallback_lines(evidence)
+  local model = evidence and evidence.text_model or {}
+  local lines = {
+    "# Sketch fallback",
+    "",
+    "## Claim",
+    "",
+    model.claim or evidence.claim or "No claim was supplied.",
+    "",
+    "## State and responsibility",
+    "",
+    "| Entity | Owner | State |",
+    "| --- | --- | --- |",
+  }
+  for _, node in ipairs(model.nodes or {}) do
+    table.insert(lines, "| " .. tostring(node.label or node.id or "") .. " | " .. tostring(node.owner or "N/A") .. " | " .. tostring(node.state or "N/A") .. " |")
+  end
+  if #(model.nodes or {}) == 0 then
+    table.insert(lines, "| N/A | N/A | N/A |")
+  end
+  table.insert(lines, "")
+  table.insert(lines, "## Relationships")
+  table.insert(lines, "")
+  table.insert(lines, "| From | Relation | To |")
+  table.insert(lines, "| --- | --- | --- |")
+  for _, edge in ipairs(model.edges or {}) do
+    table.insert(lines, "| " .. tostring(edge.from or "") .. " | " .. tostring(edge.label or "") .. " | " .. tostring(edge.to or "") .. " |")
+  end
+  if #(model.edges or {}) == 0 then
+    table.insert(lines, "| N/A | N/A | N/A |")
+  end
+  return lines
 end
 
 local function source_cursor_line(source_ref)
@@ -970,6 +1098,7 @@ function M.setup_highlights()
   vim.api.nvim_set_hl(0, "CodeReaderDiffWord", { bg = "#6b4f1d", bold = true, default = true })
   vim.api.nvim_set_hl(0, "CodeReaderStepLink", { fg = "#93c5fd", underline = true, default = true })
   vim.api.nvim_set_hl(0, "CodeReaderSymbolLink", { fg = "#c4b5fd", underline = true, default = true })
+  vim.api.nvim_set_hl(0, "CodeReaderEvidenceLink", { fg = "#fcd34d", underline = true, default = true })
   vim.api.nvim_set_hl(0, "CodeReaderSourceTarget", { fg = "#86efac", bold = true, default = true })
   vim.api.nvim_set_hl(0, "CodeReaderDiffTarget", { fg = "#fca5a5", bold = true, default = true })
 end
@@ -983,7 +1112,9 @@ function M.open_layout(state)
   state.windows.code = vim.api.nvim_get_current_win()
   state.buffers.code = vim.api.nvim_win_get_buf(state.windows.code)
   state.buffers.front_page = create_scratch("code-reader://front-page", "markdown")
+  state.buffers.sketch = create_scratch("code-reader://sketch", "markdown")
   vim.api.nvim_set_option_value("bufhidden", "hide", { buf = state.buffers.front_page })
+  vim.api.nvim_set_option_value("bufhidden", "hide", { buf = state.buffers.sketch })
   if is_diff_mode(state) then
     state.buffers.diff_before = create_scratch("code-reader://diff-before", "diff")
     state.buffers.diff_after = create_scratch("code-reader://diff-after", "diff")
@@ -1064,6 +1195,8 @@ function M.render_explanation(state)
 
     local markdown_lines, markdown_map = render_markdown_lines_with_map(step.content, step.content_line_map, state)
     append_mapped_lines(lines, map, markdown_lines, markdown_map)
+    append_execution_position(lines, map, state.doc, step)
+    append_semantic_model(lines, map, step)
 
     append_mapped_line(lines, map, "")
     append_mapped_line(lines, map, "---")
@@ -1110,6 +1243,8 @@ function M.render_explanation(state)
 
   local markdown_lines, markdown_map = render_markdown_lines_with_map(step.content, step.content_line_map, state)
   append_mapped_lines(lines, map, markdown_lines, markdown_map)
+  append_execution_position(lines, map, state.doc, step)
+  append_semantic_model(lines, map, step)
 
   append_mapped_line(lines, map, "")
   append_mapped_line(lines, map, "---")
@@ -1189,6 +1324,7 @@ function M.render_front_page(state)
 
   local markdown_lines, markdown_map = render_markdown_lines_with_map(step.content, step.content_line_map, state)
   append_mapped_lines(lines, map, markdown_lines, markdown_map)
+  append_semantic_model(lines, map, step)
 
   if is_diff_mode(state) then
     append_diff_coverage(lines, state)
@@ -1237,19 +1373,49 @@ function M.render_front_page(state)
   render_markdown_buffer(state.buffers.front_page, state.windows.code)
 end
 
+local function render_sketch_evidence(state, evidence)
+  if not ensure_code_window(state) then
+    return
+  end
+  clear_managed_window_bindings(state)
+  close_diff_after_window(state)
+  set_lines(state.buffers.sketch, sketch_fallback_lines(evidence))
+  vim.api.nvim_win_set_buf(state.windows.code, state.buffers.sketch)
+  vim.api.nvim_win_set_cursor(state.windows.code, { 1, 0 })
+  clear_refcopy_map(state, state.buffers.sketch)
+  local rendered = state.options.sketch and state.options.sketch.enabled ~= false and sketch.render(state, evidence)
+  if not rendered then
+    render_markdown_buffer(state.buffers.sketch, state.windows.code)
+  end
+  state.diff_view_path = nil
+  state.diff_view_mode = nil
+end
+
 function M.render_source(state)
   local step = state.doc.steps[state.current]
+  local evidence = selected_evidence(state, step)
   if is_front_page(step) then
-    M.render_front_page(state)
+    if evidence and evidence.kind == "sketch" then
+      render_sketch_evidence(state, evidence)
+    else
+      sketch.clear(state)
+      M.render_front_page(state)
+    end
     return
   end
 
-  if is_diff_mode(state) then
+  if evidence and evidence.kind == "sketch" then
+    render_sketch_evidence(state, evidence)
+    return
+  end
+  sketch.clear(state)
+
+  if is_diff_mode(state) and (not evidence or evidence.kind == "diff") then
     if not (valid_buf(state.buffers.diff_before) and valid_buf(state.buffers.diff_after)) then
       return
     end
 
-    local diff_ref = step.diff_refs and step.diff_refs[1] or nil
+    local diff_ref = evidence and evidence.diff_ref or (step.diff_refs and step.diff_refs[1] or nil)
     local file, hunk = find_diff_target(state, diff_ref)
     if not (file and hunk) then
       return
@@ -1326,7 +1492,8 @@ function M.render_source(state)
     return
   end
 
-  if not step or not step.sources[1] then
+  local source_ref = evidence and evidence.source or (step and step.sources and step.sources[1] or nil)
+  if not source_ref then
     return
   end
   if not ensure_code_window(state) then
@@ -1335,7 +1502,6 @@ function M.render_source(state)
   clear_managed_window_bindings(state)
   close_diff_after_window(state)
 
-  local source_ref = step.sources[1]
   local path = source.resolve_path(source_ref, { root = state.root })
   if vim.fn.filereadable(path) ~= 1 then
     vim.notify("Code Reader: source file not found: " .. path, vim.log.levels.WARN)
@@ -1389,13 +1555,14 @@ function M.restore_code_buffer(state)
   local code_win = state.windows and state.windows.code
   local code_buf = state.buffers and state.buffers.code
   local front_page_buf = state.buffers and state.buffers.front_page
+  local sketch_buf = state.buffers and state.buffers.sketch
   local diff_before_buf = state.buffers and state.buffers.diff_before
   local diff_after_buf = state.buffers and state.buffers.diff_after
   if not (valid_win(code_win) and valid_buf(code_buf)) then
     return
   end
   local current_buf = vim.api.nvim_win_get_buf(code_win)
-  if current_buf == front_page_buf or current_buf == diff_before_buf or current_buf == diff_after_buf then
+  if current_buf == front_page_buf or current_buf == sketch_buf or current_buf == diff_before_buf or current_buf == diff_after_buf then
     pcall(vim.api.nvim_win_set_buf, code_win, code_buf)
   end
 end

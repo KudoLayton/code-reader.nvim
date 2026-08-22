@@ -43,7 +43,7 @@ vim.fn.writefile({
 vim.fn.writefile({
   "---",
   "type: code-reader",
-  "version: 1",
+  "version: 2",
   "---",
   "",
   "<!-- code-reader: front-page -->",

@@ -29,6 +29,18 @@ local function parse_scalar(value)
   return value
 end
 
+local function parse_yaml_scalar(value)
+  local scalar = parse_scalar(value)
+  if scalar == "true" then
+    return true
+  end
+  if scalar == "false" then
+    return false
+  end
+  local number = tonumber(scalar)
+  return number or scalar
+end
+
 local function parse_frontmatter(lines)
   local frontmatter = {}
   if trim(lines[1] or "") ~= "---" then
@@ -50,6 +62,184 @@ local function parse_frontmatter(lines)
   end
 
   return frontmatter, index
+end
+
+local function indentation(line)
+  local spaces = #(line:match("^(%s*)") or "")
+  if spaces % 2 ~= 0 then
+    return nil
+  end
+  return math.floor(spaces / 2)
+end
+
+local function yaml_tokens(lines)
+  local tokens = {}
+  for _, item in ipairs(lines) do
+    if trim(item.text) ~= "" then
+      local indent = indentation(item.text)
+      if not indent then
+        return nil, "YAML indentation must use multiples of two spaces"
+      end
+      table.insert(tokens, {
+        indent = indent,
+        text = trim(item.text),
+        line = item.line,
+      })
+    end
+  end
+  return tokens
+end
+
+local parse_yaml_block
+
+local function merge_map(target, source)
+  for key, value in pairs(source or {}) do
+    target[key] = value
+  end
+  return target
+end
+
+local function parse_yaml_map(tokens, position, indent)
+  local result = {}
+  while position <= #tokens do
+    local token = tokens[position]
+    if token.indent < indent or token.indent ~= indent or token.text:match("^%- ") then
+      break
+    end
+    local key, value = token.text:match("^([%w_-]+):%s*(.-)%s*$")
+    if not key then
+      return nil, position, "invalid YAML mapping at line " .. tostring(token.line)
+    end
+    position = position + 1
+    if value ~= "" then
+      result[key] = parse_yaml_scalar(value)
+    elseif position <= #tokens and tokens[position].indent > indent then
+      local child, next_position, err = parse_yaml_block(tokens, position, tokens[position].indent)
+      if not child then
+        return nil, next_position, err
+      end
+      result[key] = child
+      position = next_position
+    else
+      result[key] = {}
+    end
+  end
+  return result, position
+end
+
+local function parse_yaml_list(tokens, position, indent)
+  local result = {}
+  while position <= #tokens do
+    local token = tokens[position]
+    if token.indent ~= indent or not token.text:match("^%- ") then
+      break
+    end
+    local value = trim(token.text:sub(3))
+    position = position + 1
+    if value == "" then
+      if position > #tokens or tokens[position].indent <= indent then
+        return nil, position, "list item requires a value at line " .. tostring(token.line)
+      end
+      local child, next_position, err = parse_yaml_block(tokens, position, tokens[position].indent)
+      if not child then
+        return nil, next_position, err
+      end
+      table.insert(result, child)
+      position = next_position
+    else
+      local key, scalar = value:match("^([%w_-]+):%s*(.-)%s*$")
+      if key then
+        local item = {}
+        if scalar ~= "" then
+          item[key] = parse_yaml_scalar(scalar)
+        elseif position <= #tokens and tokens[position].indent > indent then
+          local child, next_position, err = parse_yaml_block(tokens, position, tokens[position].indent)
+          if not child then
+            return nil, next_position, err
+          end
+          item[key] = child
+          position = next_position
+        else
+          item[key] = {}
+        end
+        if position <= #tokens and tokens[position].indent > indent then
+          local child, next_position, err = parse_yaml_map(tokens, position, tokens[position].indent)
+          if not child then
+            return nil, next_position, err
+          end
+          merge_map(item, child)
+          position = next_position
+        end
+        table.insert(result, item)
+      else
+        table.insert(result, parse_yaml_scalar(value))
+      end
+    end
+  end
+  return result, position
+end
+
+parse_yaml_block = function(tokens, position, indent)
+  if tokens[position] and tokens[position].text:match("^%- ") then
+    return parse_yaml_list(tokens, position, indent)
+  end
+  return parse_yaml_map(tokens, position, indent)
+end
+
+local function parse_restricted_yaml(lines)
+  local tokens, token_err = yaml_tokens(lines)
+  if not tokens then
+    return nil, token_err
+  end
+  if #tokens == 0 then
+    return {}, nil
+  end
+  local result, position, err = parse_yaml_block(tokens, 1, tokens[1].indent)
+  if not result then
+    return nil, err
+  end
+  if position <= #tokens then
+    return nil, "unexpected YAML token at line " .. tostring(tokens[position].line)
+  end
+  return result, nil
+end
+
+local function extract_v2_metadata(lines)
+  local start_index = nil
+  for index, item in ipairs(lines) do
+    if trim(item.text) == "```code-reader" then
+      start_index = index
+      break
+    end
+  end
+  if not start_index then
+    return {}, lines, nil
+  end
+  local end_index = nil
+  for index = start_index + 1, #lines do
+    if trim(lines[index].text) == "```" then
+      end_index = index
+      break
+    end
+  end
+  if not end_index then
+    return {}, lines, "code-reader metadata fence is not closed"
+  end
+  local metadata_lines = {}
+  for index = start_index + 1, end_index - 1 do
+    table.insert(metadata_lines, lines[index])
+  end
+  local metadata, err = parse_restricted_yaml(metadata_lines)
+  if err then
+    return {}, lines, err
+  end
+  local remaining = {}
+  for index, item in ipairs(lines) do
+    if index < start_index or index > end_index then
+      table.insert(remaining, item)
+    end
+  end
+  return metadata, remaining, nil
 end
 
 local function split_sections(lines, start_index)
@@ -334,6 +524,52 @@ local function parse_diff_refs(lines)
   return diff_refs
 end
 
+local function parse_single_source(value)
+  local refs = parse_sources({ tostring(value or "") })
+  return refs[1]
+end
+
+local function parse_single_diff(value)
+  local refs = parse_diff_refs({ tostring(value or "") })
+  return refs[1]
+end
+
+local function normalize_evidence(metadata)
+  local evidence = {}
+  local by_id = {}
+  for _, item in ipairs(metadata.evidence or {}) do
+    local id = tonumber(item.id)
+    local kind = item.kind and tostring(item.kind):lower() or nil
+    if id and kind and item.target then
+      local normalized = {
+        id = id,
+        kind = kind,
+        target = tostring(item.target),
+        claim = item.claim and tostring(item.claim) or "",
+        purpose = item.purpose and tostring(item.purpose) or nil,
+        coverage = item.coverage,
+        text_model = item.text_model,
+      }
+      if kind == "source" then
+        normalized.source = parse_single_source(item.target)
+        local cursor = parse_single_source(item.cursor)
+        if normalized.source and cursor and cursor.path == normalized.source.path then
+          normalized.source.cursor_line = cursor.start_line
+        end
+      elseif kind == "diff" then
+        normalized.diff_ref = parse_single_diff(item.target)
+      elseif kind == "sketch" then
+        normalized.path = tostring(item.target):gsub("\\", "/")
+        normalized.editable_target = item.editable_target and tostring(item.editable_target) or nil
+        normalized.editable_path = normalized.editable_target and normalized.editable_target:gsub("\\", "/") or nil
+      end
+      table.insert(evidence, normalized)
+      by_id[id] = normalized
+    end
+  end
+  return evidence, by_id
+end
+
 local function count_numeric_depth(id)
   if not id or id == "" then
     return 1
@@ -408,18 +644,34 @@ local function item_texts(items)
   return lines
 end
 
-local function parse_step(section, index)
+local function parse_step(section, index, is_v2)
   local lines = section.lines or {}
   local marker_index = index == 1 and first_non_empty_index(lines) or nil
-  local is_front_page = marker_index and trim(lines[marker_index].text) == FRONT_PAGE_MARKER
-  local step_lines = is_front_page and without_line(lines, marker_index) or lines
+  local legacy_front_page = marker_index and trim(lines[marker_index].text) == FRONT_PAGE_MARKER
+  local base_lines = legacy_front_page and without_line(lines, marker_index) or lines
+  local metadata, step_lines, metadata_error = extract_v2_metadata(base_lines)
+  if not is_v2 then
+    metadata = {}
+    step_lines = base_lines
+    metadata_error = nil
+  end
+  local is_front_page = legacy_front_page or metadata.kind == "overview"
   local step_texts = item_texts(step_lines)
   local heading = parse_heading(step_texts)
-  local id = heading and heading.id or tostring(index)
+  local id = metadata.id and tostring(metadata.id) or (heading and heading.id) or tostring(index)
   local title = heading and heading.title or ("Step " .. tostring(index))
   local depth = heading and heading.level or count_numeric_depth(id)
   local content, content_line_map = section_content(step_lines, heading and heading.index)
+  local evidence, evidence_by_id = normalize_evidence(metadata)
   local sources = parse_sources(step_texts)
+  local diff_refs = parse_diff_refs(step_texts)
+  for _, item in ipairs(evidence) do
+    if item.source then
+      table.insert(sources, item.source)
+    elseif item.diff_ref then
+      table.insert(diff_refs, item.diff_ref)
+    end
+  end
   local cursor = parse_cursor(step_texts)
   local primary_source = sources[1]
   if
@@ -455,7 +707,12 @@ local function parse_step(section, index)
     start_line = section.start_line,
     end_line = step_lines[#step_lines] and step_lines[#step_lines].line or section.start_line,
     sources = sources,
-    diff_refs = parse_diff_refs(step_texts),
+    diff_refs = diff_refs,
+    metadata = metadata,
+    map_anchor = metadata.map_anchor,
+    metadata_error = metadata_error,
+    evidence = evidence,
+    evidence_by_id = evidence_by_id,
   }
 end
 
@@ -463,13 +720,14 @@ function M.parse(text, opts)
   opts = opts or {}
   local lines = split_lines(text)
   local frontmatter, start_index = parse_frontmatter(lines)
+  local is_v2 = tostring(frontmatter.version or "") == "2"
   local sections = split_sections(lines, start_index)
   local steps = {}
   local step_by_id = {}
   local front_page_index = nil
 
   for index, section in ipairs(sections) do
-    local step = parse_step(section, index)
+    local step = parse_step(section, index, is_v2)
     table.insert(steps, step)
     step_by_id[step.id] = index
     if step.kind == "front_page" then
@@ -480,6 +738,7 @@ function M.parse(text, opts)
   return {
     path = opts.path,
     frontmatter = frontmatter,
+    version_supported = is_v2,
     steps = steps,
     step_by_id = step_by_id,
     front_page_index = front_page_index,

@@ -38,7 +38,7 @@ vim.fn.writefile({
 vim.fn.writefile({
   "---",
   "type: code-reader",
-  "version: 1",
+  "version: 2",
   "---",
   "",
   "<!-- code-reader: front-page -->",
@@ -80,7 +80,7 @@ vim.fn.writefile({
 vim.fn.writefile({
   "---",
   "type: code-reader-diff",
-  "version: 1",
+  "version: 2",
   "diff: ./change.diff",
   "---",
   "",

@@ -5,6 +5,7 @@ local links = require("code_reader.links")
 local symbols = require("code_reader.symbols")
 local diff = require("code_reader.diff")
 local refcopy = require("code_reader.refcopy")
+local sketch = require("code_reader.sketch")
 
 local M = {}
 
@@ -20,6 +21,10 @@ local state = {
       enabled = true,
       timeout_ms = 2000,
       use_ascii = false,
+    },
+    sketch = {
+      enabled = true,
+      editor_command = nil,
     },
     debug = {
       enabled = false,
@@ -63,6 +68,9 @@ local function load_document(path)
   end
 
   local doc = parser.parse(text, { path = path })
+  if not doc.version_supported then
+    return nil, nil, "Code Reader requires frontmatter version: 2"
+  end
   local diff_doc = nil
   if doc.frontmatter.type == "code-reader-diff" then
     local diff_path = resolve_relative(path, doc.frontmatter.diff)
@@ -75,6 +83,22 @@ local function load_document(path)
   end
 
   return doc, diff_doc
+end
+
+local function current_evidence()
+  local step = state.doc and state.doc.steps and state.doc.steps[state.current]
+  if not (step and step.evidence_by_id) then
+    return nil
+  end
+  if state.selected_evidence and step.evidence_by_id[state.selected_evidence] then
+    return step.evidence_by_id[state.selected_evidence]
+  end
+  for _, evidence in ipairs(step.evidence or {}) do
+    if evidence.kind == "sketch" and evidence.purpose and evidence.purpose:match("%-map$") then
+      return evidence
+    end
+  end
+  return step.evidence and step.evidence[1]
 end
 
 local function current_file()
@@ -182,6 +206,7 @@ function M.open(path)
   state.refcopy_maps = {}
   state.diff_view_path = nil
   state.diff_view_mode = nil
+  state.selected_evidence = nil
 
   ui.open_layout(state)
   set_buffer_keymaps()
@@ -215,6 +240,7 @@ function M.refresh()
   state.refcopy_maps = {}
   state.diff_view_path = nil
   state.diff_view_mode = nil
+  state.selected_evidence = nil
 
   symbols.clear()
   ui.render(state)
@@ -233,6 +259,7 @@ function M.goto_step(index, opts)
 
   local focus_win = opts.keep_focus or vim.api.nvim_get_current_win()
   state.current = clamp_step(tonumber(index) or state.current)
+  state.selected_evidence = nil
   symbols.clear()
   ui.render(state)
   ui.reset_explanation_view(state)
@@ -271,13 +298,15 @@ function M.open_source()
     return
   end
   local step = state.doc.steps[state.current]
-  if not step or not step.sources[1] then
+  local evidence = current_evidence()
+  local source_ref = evidence and evidence.source or (step and step.sources and step.sources[1] or nil)
+  if not source_ref then
     return
   end
 
-  local path = source.resolve_path(step.sources[1], { root = state.root })
+  local path = source.resolve_path(source_ref, { root = state.root })
   vim.cmd("edit " .. vim.fn.fnameescape(path))
-  local cursor_line = step.sources[1].cursor_line or step.sources[1].start_line
+  local cursor_line = source_ref.cursor_line or source_ref.start_line
   local line_count = vim.api.nvim_buf_line_count(0)
   vim.api.nvim_win_set_cursor(0, { math.max(1, math.min(cursor_line, line_count)), 0 })
 end
@@ -297,7 +326,8 @@ function M.close()
   end
 
   local buffers = state.buffers or {}
-  for _, name in ipairs({ "explanation", "toc", "front_page", "diff_before", "diff_after" }) do
+  sketch.clear(state)
+  for _, name in ipairs({ "explanation", "toc", "front_page", "sketch", "diff_before", "diff_after" }) do
     local buf = buffers[name]
     if valid_buf(buf) then
       pcall(vim.api.nvim_buf_delete, buf, { force = true })
@@ -315,8 +345,64 @@ function M.close()
   state.diff_view_mode = nil
   state.diff_sync_autocmds = nil
   state.diff_syncing = nil
+  state.selected_evidence = nil
   state.windows = nil
   state.buffers = nil
+end
+
+function M.select_evidence(id)
+  local step = state.doc and state.doc.steps and state.doc.steps[state.current]
+  local evidence = step and step.evidence_by_id and step.evidence_by_id[tonumber(id)] or nil
+  if not evidence then
+    vim.notify("Code Reader: evidence not found: " .. tostring(id), vim.log.levels.WARN)
+    return false
+  end
+  state.selected_evidence = evidence.id
+  symbols.clear()
+  ui.render_source(state)
+  return true
+end
+
+function M.edit_sketch()
+  local evidence = current_evidence()
+  if not evidence or evidence.kind ~= "sketch" then
+    vim.notify("Code Reader: the selected evidence is not a sketch", vim.log.levels.WARN)
+    return false
+  end
+  local command = state.options.sketch and state.options.sketch.editor_command
+  local path = sketch.resolve_editable_path(state, evidence)
+  if not path then
+    vim.notify("Code Reader: selected sketch has no editable_target", vim.log.levels.WARN)
+    return false
+  end
+  if type(command) == "function" then
+    local ok, err = pcall(command, path)
+    if not ok then
+      vim.notify("Code Reader: sketch editor failed: " .. tostring(err), vim.log.levels.ERROR)
+      return false
+    end
+    return true
+  end
+  if type(command) ~= "table" or #command == 0 then
+    vim.notify("Code Reader: set sketch.editor_command to edit sketches", vim.log.levels.WARN)
+    return false
+  end
+  local argv = {}
+  for _, value in ipairs(command) do
+    table.insert(argv, tostring(value):gsub("{file}", path))
+  end
+  if not vim.system then
+    vim.notify("Code Reader: Neovim vim.system is required for sketch editing", vim.log.levels.ERROR)
+    return false
+  end
+  vim.system(argv, { detach = true }, function(result)
+    if result.code ~= 0 then
+      vim.schedule(function()
+        vim.notify("Code Reader: sketch editor exited with code " .. tostring(result.code), vim.log.levels.WARN)
+      end)
+    end
+  end)
+  return true
 end
 
 function M.activate()
@@ -355,6 +441,8 @@ function M.activate()
     end
   elseif link.kind == "treesitter" then
     symbols.highlight(state, link)
+  elseif link.kind == "evidence" then
+    M.select_evidence(link.id)
   elseif link.kind == "invalid" then
     vim.notify("Code Reader: invalid link: " .. link.reason, vim.log.levels.WARN)
   end

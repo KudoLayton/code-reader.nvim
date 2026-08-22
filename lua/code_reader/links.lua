@@ -89,6 +89,20 @@ local function parse_treesitter_link(label, target, start_index, end_index)
   }
 end
 
+local function parse_evidence_link(label, target, start_index, end_index)
+  local id = target:match("^code%-reader://evidence/(%d+)$")
+  if not id then
+    return nil
+  end
+  return {
+    kind = "evidence",
+    id = tonumber(id),
+    label = label,
+    start_col = start_index,
+    end_col = end_index,
+  }
+end
+
 local function find_internal_at(line, column)
   local search_from = 1
   while true do
@@ -169,7 +183,8 @@ local function find_markdown_at(line, column)
         if target_close then
           if column >= open_index and column <= target_close then
             local label = line:sub(open_index + 1, label_close - 1)
-            return parse_treesitter_link(label, target, open_index, target_close)
+            return parse_evidence_link(label, target, open_index, target_close)
+              or parse_treesitter_link(label, target, open_index, target_close)
           end
           search_from = target_close + 1
         else
