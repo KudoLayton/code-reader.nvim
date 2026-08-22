@@ -3,6 +3,7 @@ from __future__ import annotations
 import sys
 import tempfile
 import unittest
+import json
 from pathlib import Path
 from unittest.mock import patch
 
@@ -164,6 +165,26 @@ class ValidateCodeReaderMarkdownTests(unittest.TestCase):
             errors = validate_code_reader_markdown.validate_doc(root, markdown_path, False)
             self.assertTrue(any("coverage has unknown" in error for error in errors))
             self.assertTrue(any("coverage misses" in error for error in errors))
+
+    def test_execution_map_inventory_is_json_serializable(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            source_path = root / "src" / "example.py"
+            source_path.parent.mkdir()
+            source_path.write_text("def parse_request():\n    return True\n", encoding="utf-8")
+            asset_directory = root / ".code_reader" / "assets"
+            asset_directory.mkdir(parents=True)
+            (asset_directory / "flow.svg").write_text('<svg xmlns="http://www.w3.org/2000/svg"/>', encoding="utf-8")
+            (asset_directory / "flow.excalidraw").write_text(
+                '{"type":"excalidraw","version":2,"elements":[],"appState":{},"files":{}}', encoding="utf-8"
+            )
+            markdown_path = root / "walkthrough.md"
+            markdown_path.write_text(execution_map_walkthrough(), encoding="utf-8")
+
+            errors, inventory = validate_code_reader_markdown.build_inventory(root, markdown_path, False)
+
+            self.assertEqual(errors, [])
+            json.dumps(inventory)
 
     def test_execution_map_requires_a_resolvable_stage_anchor(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:

@@ -6,6 +6,7 @@ import sys
 import tempfile
 import unittest
 import json
+import subprocess
 from copy import deepcopy
 from pathlib import Path
 from unittest.mock import patch
@@ -83,6 +84,8 @@ class BootstrapStaticAnalysisTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory, patch.object(
             bootstrap_static_analysis, "_install", return_value=None
         ) as install, patch.object(
+            bootstrap_static_analysis, "_uv_command", return_value=("C:/Tools/uv.exe", None)
+        ), patch.object(
             bootstrap_static_analysis, "_probe_tree_sitter", return_value=probe
         ):
             result = bootstrap_static_analysis.ensure("cpp", Path(directory))
@@ -94,6 +97,66 @@ class BootstrapStaticAnalysisTest(unittest.TestCase):
             marker = Path(result["site_packages"]).parent / "installed.json"
             stored = json.loads(marker.read_text(encoding="utf-8"))
             self.assertEqual(stored["abi"], probe)
+            self.assertEqual(stored["schema"], "code-reader-static-analysis-install/v3")
+            self.assertEqual(stored["installer"], "uv")
+
+    def test_pip_cache_marker_is_reinstalled_with_uv(self) -> None:
+        probe = {
+            "status": "READY",
+            "runtime_abi": {"minimum": 13, "maximum": 15},
+            "grammar_abi": 15,
+        }
+        profile = bootstrap_static_analysis.static_analysis_registry.load_builtin_profiles()["cpp"]
+        specs = bootstrap_static_analysis.dependency_specs("cpp")
+        with tempfile.TemporaryDirectory() as directory:
+            cache_root = Path(directory)
+            marker = bootstrap_static_analysis.cache_site_packages(cache_root, "cpp", specs).parent / "installed.json"
+            marker.parent.mkdir(parents=True)
+            legacy = bootstrap_static_analysis._expected_marker("cpp", profile, specs, probe)
+            legacy["schema"] = "code-reader-static-analysis-install/v2"
+            legacy.pop("installer")
+            marker.write_text(json.dumps(legacy), encoding="utf-8")
+
+            with patch.object(bootstrap_static_analysis, "_uv_command", return_value=("C:/Tools/uv.exe", None)), patch.object(
+                bootstrap_static_analysis, "_install", return_value=None
+            ) as install, patch.object(bootstrap_static_analysis, "_probe_tree_sitter", return_value=probe):
+                result = bootstrap_static_analysis.ensure("cpp", cache_root)
+
+        self.assertEqual(result["status"], "READY")
+        self.assertTrue(result["installed"])
+        install.assert_called_once()
+
+    def test_tree_sitter_install_uses_uv_instead_of_pip(self) -> None:
+        site_packages = Path("C:/temporary/site-packages")
+        specs = ["tree-sitter==0.25.0", "tree-sitter-cpp==0.23.4"]
+        completed = subprocess.CompletedProcess([], 0, "", "")
+
+        with patch.object(bootstrap_static_analysis.subprocess, "run", return_value=completed) as run:
+            self.assertIsNone(bootstrap_static_analysis._install(site_packages, specs, "C:/Tools/uv.exe"))
+
+        self.assertEqual(
+            run.call_args.args[0],
+            ["C:/Tools/uv.exe", "pip", "install", "--target", str(site_packages), *specs],
+        )
+
+    def test_uv_unavailable_prevents_tree_sitter_install(self) -> None:
+        with tempfile.TemporaryDirectory() as directory, patch.object(
+            bootstrap_static_analysis.shutil, "which", return_value=None
+        ), patch.object(bootstrap_static_analysis.subprocess, "run") as run:
+            result = bootstrap_static_analysis.ensure("cpp", Path(directory))
+
+        self.assertEqual(result["status"], "UV_UNAVAILABLE")
+        self.assertIn("uv", result["reason"])
+        run.assert_not_called()
+
+    def test_broken_uv_shim_is_treated_as_unavailable(self) -> None:
+        with tempfile.TemporaryDirectory() as directory, patch.object(
+            bootstrap_static_analysis.shutil, "which", return_value="C:/broken/uv.exe"
+        ), patch.object(bootstrap_static_analysis.subprocess, "run", side_effect=OSError("not executable")):
+            result = bootstrap_static_analysis.ensure("cpp", Path(directory))
+
+        self.assertEqual(result["status"], "UV_UNAVAILABLE")
+        self.assertIn("not executable", result["reason"])
 
 
 if __name__ == "__main__":

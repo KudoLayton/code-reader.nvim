@@ -205,7 +205,7 @@ Review the whole runtime narrative: entry to outcome, whether the execution map 
 ## Validation
 
 ```powershell
-python plugins/code-reader-authoring/scripts/validate_code_reader_markdown.py --project-root <repo-root> --emit-page-inventory <inventory.json> <markdown-file>
+uv run --no-project plugins/code-reader-authoring/scripts/validate_code_reader_markdown.py --project-root <repo-root> --emit-page-inventory <inventory.json> <markdown-file>
 ```
 
 Use `--allow-partial-diff` only when the user explicitly requests partial diff coverage. The validator checks the v2 contract, evidence links, source scopes, diff hunk coverage, SVG preview, Excalidraw scene, sketch text model, execution-map coverage, and stage anchors.

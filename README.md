@@ -94,7 +94,7 @@ npm install
 Validate first, then export:
 
 ```powershell
-python plugins/code-reader-authoring/scripts/validate_code_reader_markdown.py --project-root demo/basic demo/basic/.code_reader/walkthrough.md
+uv run --no-project plugins/code-reader-authoring/scripts/validate_code_reader_markdown.py --project-root demo/basic demo/basic/.code_reader/walkthrough.md
 node plugins/code-reader-authoring/scripts/code-reader-pdf.mjs demo/basic/.code_reader/walkthrough.md --root demo/basic
 ```
 
@@ -122,6 +122,6 @@ nvim --headless -u NONE -l tests/authoring_validator_spec.lua
 Run authoring and PDF tests:
 
 ```powershell
-python -m unittest plugins/code-reader-authoring/tests/test_validate_code_reader_markdown.py
+uv run --no-project python -m unittest plugins/code-reader-authoring/tests/test_validate_code_reader_markdown.py
 npm --prefix plugins/code-reader-authoring run test:pdf
 ```

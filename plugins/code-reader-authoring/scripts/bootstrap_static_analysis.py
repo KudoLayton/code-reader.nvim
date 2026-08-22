@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -76,15 +77,33 @@ def abi_is_compatible(minimum: int, maximum: int, grammar_abi: int) -> bool:
     return minimum <= grammar_abi <= maximum
 
 
-def _install(site_packages: Path, specs: list[str]) -> str | None:
+def _uv_command() -> tuple[str | None, str | None]:
+    command = shutil.which("uv")
+    if not command:
+        return None, "uv is not available on PATH; install uv before running static analysis"
+    try:
+        completed = subprocess.run(
+            [command, "--version"],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            check=False,
+        )
+    except OSError as error:
+        return None, f"uv is not executable: {error}"
+    if completed.returncode != 0:
+        detail = completed.stderr.strip() or completed.stdout.strip() or f"exit code {completed.returncode}"
+        return None, f"uv --version failed: {detail}"
+    return command, None
+
+
+def _install(site_packages: Path, specs: list[str], uv_command: str) -> str | None:
     completed = subprocess.run(
         [
-            sys.executable,
-            "-m",
+            uv_command,
             "pip",
             "install",
-            "--disable-pip-version-check",
-            "--no-input",
             "--target",
             str(site_packages),
             *specs,
@@ -137,7 +156,8 @@ def _profile_fingerprint(profile: dict[str, Any]) -> str:
 
 def _expected_marker(language: str, profile: dict[str, Any], specs: list[str], probe: dict[str, Any]) -> dict[str, Any]:
     return {
-        "schema": "code-reader-static-analysis-install/v2",
+        "schema": "code-reader-static-analysis-install/v3",
+        "installer": "uv",
         "language": language,
         "profile_fingerprint": _profile_fingerprint(profile),
         "specs": specs,
@@ -178,8 +198,17 @@ def _ensure_profile(
         except (OSError, json.JSONDecodeError, TypeError):
             pass
 
+    uv_command, uv_error = _uv_command()
+    if uv_command is None:
+        return {
+            "status": "UV_UNAVAILABLE",
+            "language": language,
+            "site_packages": str(site_packages),
+            "reason": uv_error,
+        }
+
     site_packages.mkdir(parents=True, exist_ok=True)
-    install_error = _install(site_packages, specs)
+    install_error = _install(site_packages, specs, uv_command)
     if install_error:
         return {"status": "UNAVAILABLE", "language": language, "site_packages": str(site_packages), "reason": install_error}
     probe = _probe_tree_sitter(site_packages, profile)

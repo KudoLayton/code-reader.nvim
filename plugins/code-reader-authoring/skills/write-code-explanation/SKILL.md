@@ -5,7 +5,7 @@ description: "Create or revise map-first v2 Code Reader feature walkthrough Mark
 
 # Write Code Explanation
 
-Read `../../references/code-reader-markdown-format.md` before writing.
+Read `../../references/code-reader-markdown-format.md` before writing. Before running a plugin Python script, read and follow `../../references/uv-runtime.md`.
 
 1. Inspect the feature entry point, participating modules, data/state, ownership boundaries, error paths, repetitions, and runtime order. Start from the reader question: “How is this feature implemented?”
 2. Write `type: code-reader`, `version: 2` Markdown in reader order: execution map, key step, semantic bullets, then source proof. Do not turn source-file order into reading order.

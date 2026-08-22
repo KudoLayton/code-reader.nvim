@@ -1050,8 +1050,8 @@ def v2_evidence_errors(
                             endpoint = edge.get(endpoint_name)
                             if not isinstance(endpoint, str) or endpoint not in node_ids:
                                 errors.append(f"section starting at line {section_start} evidence {identifier}: execution-map edge {endpoint_name} must reference a declared node")
-                    entry["node_ids"] = node_ids
-                    entry["edge_ids"] = edge_ids
+                    entry["node_ids"] = sorted(node_ids)
+                    entry["edge_ids"] = sorted(edge_ids)
         inventory.append(entry)
     expected_ids = set(range(1, len(entries) + 1))
     if ids and ids != expected_ids:
@@ -1119,8 +1119,8 @@ def build_v2_inventory(project_root: Path, markdown_path: Path, allow_partial_di
                     "id": evidence["id"],
                     "section_start": section_start,
                     "coverage": evidence["coverage"],
-                    "node_ids": evidence.get("node_ids", set()),
-                    "edge_ids": evidence.get("edge_ids", set()),
+                    "node_ids": set(evidence.get("node_ids", [])),
+                    "edge_ids": set(evidence.get("edge_ids", [])),
                 })
         inventory["pages"].append({"id": identifier, "kind": metadata.get("kind"), "section_start_line": section_start, "heading": heading_data(content)[0] if heading_data(content) else None, "map_anchor": metadata.get("map_anchor"), "evidence": evidence_inventory})
     covered_by_any_map: set[str] = set()

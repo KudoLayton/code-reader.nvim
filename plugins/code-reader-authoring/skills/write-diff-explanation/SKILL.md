@@ -5,7 +5,7 @@ description: "Create or revise map-first v2 Code Reader diff walkthrough Markdow
 
 # Write Diff Explanation
 
-Read `../../references/code-reader-markdown-format.md` before writing.
+Read `../../references/code-reader-markdown-format.md` before writing. Before running a plugin Python script, read and follow `../../references/uv-runtime.md`.
 
 1. Inspect the complete unified diff and affected code before drafting. Identify changed behavior, state/ownership changes, failures, repetitions, all file-local hunk ids, and runtime order.
 2. Write `type: code-reader-diff`, `version: 2`, `feature`, and `diff`. Begin with an overview; then create stages in behavioral order rather than patch order.

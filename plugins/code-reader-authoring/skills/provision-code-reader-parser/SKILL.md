@@ -7,6 +7,8 @@ description: "Propose and, after explicit approval, provision a user-local Tree-
 
 Use this skill only when Code Reader reports `PROVISION_REQUIRED` for an unregistered language, or when the user asks to add a parser profile. Do not use it to update a built-in profile.
 
+Before running a plugin Python script, read and follow `../../references/uv-runtime.md`.
+
 ## Workflow
 
 1. Read `<plugin-root>/scripts/static_analysis_parser_catalog.json`. It is a checked-in review snapshot of the Tree-sitter parser list and supports grammar ABI 13 through 15. Do not fetch the Wiki during PDF generation or select packages dynamically from it.
@@ -15,7 +17,7 @@ Use this skill only when Code Reader reports `PROVISION_REQUIRED` for an unregis
 4. After approval, place the candidate JSON in a temporary location outside the explained project and run:
 
 ```text
-python <plugin-root>/scripts/provision_static_analysis_profile.py --candidate <candidate.json> --approve
+uv run --no-project <plugin-root>/scripts/provision_static_analysis_profile.py --candidate <candidate.json> --approve
 ```
 
 5. The command installs an isolated runtime plus exactly one grammar package into the user static-analysis cache, probes the wheel ABI, and saves the profile only when its observed ABI matches the approved candidate and is within 13 through 15. It never changes the project or plugin profile files.
