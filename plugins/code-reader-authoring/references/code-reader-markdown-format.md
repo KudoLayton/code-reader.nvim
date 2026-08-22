@@ -6,7 +6,7 @@ Use this reference before authoring or reviewing a Code Reader walkthrough. Mark
 
 Use frontmatter with `type: code-reader` or `type: code-reader-diff`, `version: 2`, and a stable `feature` id. Diff documents also declare `diff: ./change.diff` relative to the Markdown file.
 
-Separate sections with `---`. Each section begins with a `code-reader` fenced YAML block. The first section has `kind: overview`; later sections normally use `kind: stage`. Every overview and stage has an `id`, a reader-facing `question`, `state`, and `responsibility`. Every stage additionally has a `trigger`, `failure`, and ordered `evidence` list.
+Separate sections with `---`. Each section begins with a `code-reader` fenced YAML block. The first section has `kind: overview`; later sections normally use `kind: stage` or, when necessary, `kind: model`. Every overview, stage, and model has an `id`, a reader-facing `question`, `state`, and `responsibility`. Every stage additionally has a `trigger`, `failure`, and ordered `evidence` list.
 
 Write for the reader route, not source-file order: **execution map → key step → semantic bullets → source or diff proof**. The overview gives the execution space; stages explain the few decisions that change state, ownership, or outcome. A reader must be able to answer “How is this feature implemented?” before opening a source range.
 
@@ -98,6 +98,59 @@ The prose explains the mechanism, consequence, and reader decision. It must not 
 
 Use three to seven stages for the normal path. Aggregate mechanical operations under the decision they serve. For a repeated operation, show its first occurrence, last outcome, and the rule that makes the middle occurrences equivalent; do not spend a stage on each repetition. Split a stage only when the reader question, state transition, owner, or outcome changes.
 
+## Scope reviews and conceptual hierarchy
+
+Code-range splitting is a review signal, not an automatic page break. When a source or diff scope is split, or when one stage contains two or more code evidence entries, decide why the original reader scope was too large before arranging the pages:
+
+- `model_gap`: a short explanation cannot prepare the mental model needed to read every range.
+- `explanation_overload`: the necessary explanation itself contains too many independent rules, entities, or branches to scan as one page.
+- `implementation_complexity`: the explanation remains one small model, but boilerplate, framework mechanics, or avoidable structure make its code long.
+
+Record the decision in the overview's `scope_reviews`. A `model_gap` or `explanation_overload` diagnosis requires `page_decision: split`. `implementation_complexity` may retain multiple ranges on one stage; label each range's local role rather than replacing the model with a long paraphrase. Every source/diff evidence entry on a multi-range stage must appear in a review member list.
+
+```yaml
+scope_reviews:
+  - id: request-validation
+    signal: split_required # split_required | multiple_scopes
+    members:
+      - stage: parse-request
+        evidence: 1
+      - stage: check-policy
+        evidence: 1
+    diagnoses:
+      - model_gap
+    page_decision: split # retain | split
+    hierarchy: validation-model # none | model id
+    rationale: Parsing and policy establish one request contract, but each needs a separate local model.
+```
+
+Use a model page only when the separated pages collectively implement one responsibility and the parent gives non-repeated context that a child cannot stand in for. A model page has no required runtime evidence and is not an execution-map stage. It declares its common contract and why its children are separate; every direct child sets the explicit `parent` id. Model parents may nest at most two levels below the overview and need at least two children.
+
+```yaml
+kind: model
+id: validation-model
+question: How do parsing and policy jointly establish a dispatchable request?
+state:
+  status: not_applicable
+  reason: This page summarizes its child stages.
+responsibility:
+  status: applicable
+  items:
+    - owner: request validation
+      action: Establish the request contract
+hierarchy:
+  contract: A validated request is safe to dispatch.
+  decomposition: Parsing and policy have independent local rules.
+```
+
+```yaml
+kind: stage
+id: parse-request
+parent: validation-model
+```
+
+Do not introduce a model page solely because steps are sequential (`parse → validate → dispatch`) or because it would only repeat the child summaries. Use `hierarchy: none` for that flat route.
+
 ## Evidence and diagrams
 
 - `source` targets one project-relative `path#Lx-Ly` range. Use `cursor` only to select a line inside that range.
@@ -154,7 +207,7 @@ Coverage identifies explained stages, not necessarily one SVG node per stage. Th
 
 ### Stage position anchors
 
-An execution map also gives every stage a stable reader position. Its `text_model.nodes[].id` and `text_model.edges[].id` are the anchor namespace: execution-map edge ids are required and must be unique. A covered stage declares the map evidence id plus the node and/or edge ids that describe its current scope.
+An execution map also gives every runtime stage a stable reader position. Its `text_model.nodes[].id` and `text_model.edges[].id` are the anchor namespace: execution-map edge ids are required and must be unique. A covered stage declares the map evidence id plus the node and/or edge ids that describe its current scope. A model page is conceptual rather than runtime: it is excluded from execution-map coverage and instead shows its conceptual path, direct child scopes, and common contract.
 
 ```yaml
 map_anchor:
@@ -195,12 +248,13 @@ stages:
     state_and_ownership: PASS
     evidence_alignment: PASS
     cognitive_load: PASS
+    scope_structure: PASS
     required_action: null
 document_flow: PASS
 sketch_accessibility: PASS
 ```
 
-Review the whole runtime narrative: entry to outcome, whether the execution map covers every stage, whether each stage anchor resolves to the intended current scope and immediate handoffs, key-step aggregation, repetition abbreviation, state transitions, ownership handoffs, errors or non-applicability, evidence order, source/diff coverage, and whether a sketch agrees with its text model. Fix every `CHANGES_REQUIRED`, revalidate, then obtain a fresh whole-document report.
+Review the whole runtime narrative: entry to outcome, whether the execution map covers every runtime stage, whether each stage anchor resolves to the intended current scope and immediate handoffs, key-step aggregation, repetition abbreviation, state transitions, ownership handoffs, errors or non-applicability, evidence order, source/diff coverage, and whether a sketch agrees with its text model. Review every scope decision against the code: A/B diagnoses must have been split, C must preserve a compact model, and a model parent must add a shared contract rather than repeat child prose. Fix every `CHANGES_REQUIRED`, revalidate, then obtain a fresh whole-document report.
 
 ## Validation
 
@@ -208,4 +262,4 @@ Review the whole runtime narrative: entry to outcome, whether the execution map 
 uv run --no-project plugins/code-reader-authoring/scripts/validate_code_reader_markdown.py --project-root <repo-root> --emit-page-inventory <inventory.json> <markdown-file>
 ```
 
-Use `--allow-partial-diff` only when the user explicitly requests partial diff coverage. The validator checks the v2 contract, evidence links, source scopes, diff hunk coverage, SVG preview, Excalidraw scene, sketch text model, execution-map coverage, and stage anchors.
+Use `--allow-partial-diff` only when the user explicitly requests partial diff coverage. The validator checks the v2 contract, evidence links, source scopes, diff hunk coverage, scope-review decisions, explicit model hierarchy, SVG preview, Excalidraw scene, sketch text model, execution-map coverage, and stage anchors.

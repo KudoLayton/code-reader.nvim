@@ -20,6 +20,8 @@ DIFF_RE = re.compile(r"([\w._\-/\\]+)#([Hh]\d+)(?:@([A-Za-z]+):([^\s`\]]+))?")
 STEP_LINK_RE = re.compile(r"\[\[([^\]|]+)(?:\|[^\]]+)?\]\]")
 EVIDENCE_LINK_RE = re.compile(r"\[([^\]]+)\]\(code-reader://evidence/(\d+)\)")
 SKETCH_PURPOSES = {"execution-map", "handoff-map", "state-map", "structure-map"}
+SCOPE_REVIEW_SIGNALS = {"split_required", "multiple_scopes"}
+SCOPE_REVIEW_DIAGNOSES = {"model_gap", "explanation_overload", "implementation_complexity"}
 
 
 SOURCE_DIRECTIVE_RE = re.compile(r"^\s*Source:\s*`?([\w._\-/\\]+)#L(\d+)(?:-L?(\d+))?`?\s*$")
@@ -882,7 +884,7 @@ def v2_required_model_errors(section_start: int, metadata: dict[str, Any]) -> li
         errors.append(f"section starting at line {section_start} must set kind to overview, stage, or model")
     if not metadata.get("id"):
         errors.append(f"section starting at line {section_start} must set metadata id")
-    if kind in {"overview", "stage"} and not metadata.get("question"):
+    if kind in {"overview", "stage", "model"} and not metadata.get("question"):
         errors.append(f"section starting at line {section_start} must set question")
     if kind == "stage" and not metadata.get("trigger"):
         errors.append(f"section starting at line {section_start} must set trigger")
@@ -898,6 +900,187 @@ def v2_required_model_errors(section_start: int, metadata: dict[str, Any]) -> li
             errors.append(f"section starting at line {section_start} must declare failure.status")
         elif failure["status"] == "not_applicable" and not failure.get("reason"):
             errors.append(f"section starting at line {section_start} must explain failure.not_applicable")
+    return errors
+
+
+def nonempty_string(value: Any) -> bool:
+    return isinstance(value, str) and bool(value.strip())
+
+
+def v2_scope_and_hierarchy_errors(
+    records: list[dict[str, Any]], inventory: dict[str, Any]
+) -> list[str]:
+    """Validate author-declared page-splitting decisions and explicit model parents."""
+    errors: list[str] = []
+    records_by_id = {record["id"]: record for record in records if record["id"]}
+    children_by_parent: dict[str, list[dict[str, Any]]] = {}
+
+    for record in records:
+        metadata = record["metadata"]
+        parent = metadata.get("parent")
+        if parent is None:
+            continue
+        if metadata.get("kind") not in {"stage", "model"}:
+            errors.append(f"section starting at line {record['section_start']}: only stage or model pages may set parent")
+            continue
+        if not nonempty_string(parent):
+            errors.append(f"section starting at line {record['section_start']}: parent must be a model id")
+            continue
+        parent_record = records_by_id.get(parent)
+        if not parent_record:
+            errors.append(f"section starting at line {record['section_start']}: parent `{parent}` does not exist")
+            continue
+        if parent_record["metadata"].get("kind") != "model":
+            errors.append(f"section starting at line {record['section_start']}: parent `{parent}` must have kind: model")
+            continue
+        children_by_parent.setdefault(parent, []).append(record)
+
+    for record in records:
+        metadata = record["metadata"]
+        if metadata.get("kind") != "model":
+            continue
+        hierarchy = metadata.get("hierarchy")
+        if not isinstance(hierarchy, dict):
+            errors.append(f"section starting at line {record['section_start']}: model pages must declare hierarchy")
+            continue
+        for field_name in ("contract", "decomposition"):
+            if not nonempty_string(hierarchy.get(field_name)):
+                errors.append(f"section starting at line {record['section_start']}: model hierarchy.{field_name} must be a non-empty string")
+        if len(children_by_parent.get(record["id"], [])) < 2:
+            errors.append(f"section starting at line {record['section_start']}: model `{record['id']}` must have at least two children")
+
+    def model_ancestors(record: dict[str, Any]) -> tuple[list[str], bool]:
+        ancestors: list[str] = []
+        seen = {record["id"]}
+        parent = record["metadata"].get("parent")
+        while nonempty_string(parent):
+            if parent in seen:
+                return ancestors, True
+            seen.add(parent)
+            ancestors.append(parent)
+            parent_record = records_by_id.get(parent)
+            if not parent_record:
+                break
+            parent = parent_record["metadata"].get("parent")
+        return ancestors, False
+
+    for record in records:
+        if record["metadata"].get("kind") not in {"stage", "model"}:
+            continue
+        ancestors, cyclic = model_ancestors(record)
+        if cyclic:
+            errors.append(f"section starting at line {record['section_start']}: hierarchy contains a parent cycle")
+        if len(ancestors) > 2:
+            errors.append(f"section starting at line {record['section_start']}: hierarchy may contain at most two model levels")
+        record["inventory_page"]["parent"] = record["metadata"].get("parent")
+        record["inventory_page"]["children"] = [child["id"] for child in children_by_parent.get(record["id"], [])]
+
+    overview = next((record for record in records if record["metadata"].get("kind") == "overview"), None)
+    for record in records:
+        if record["metadata"].get("kind") != "overview" and "scope_reviews" in record["metadata"]:
+            errors.append(f"section starting at line {record['section_start']}: scope_reviews belongs in the overview")
+    scope_reviews = overview["metadata"].get("scope_reviews") if overview else None
+    if scope_reviews is None:
+        scope_reviews = []
+    if not isinstance(scope_reviews, list):
+        errors.append("overview scope_reviews must be a list")
+        scope_reviews = []
+
+    review_ids: set[str] = set()
+    member_refs: set[tuple[str, int]] = set()
+    normalized_reviews: list[dict[str, Any]] = []
+    for review in scope_reviews:
+        if not isinstance(review, dict):
+            errors.append("overview scope_reviews entries must be mappings")
+            continue
+        review_id = review.get("id")
+        if not nonempty_string(review_id):
+            errors.append("overview scope_reviews entries must set a non-empty id")
+            continue
+        if review_id in review_ids:
+            errors.append(f"overview scope_reviews duplicates id `{review_id}`")
+        review_ids.add(review_id)
+        signal = review.get("signal")
+        if signal not in SCOPE_REVIEW_SIGNALS:
+            errors.append(f"scope review `{review_id}` signal must be one of {', '.join(sorted(SCOPE_REVIEW_SIGNALS))}")
+        diagnoses = review.get("diagnoses")
+        if not isinstance(diagnoses, list) or not diagnoses or any(diagnosis not in SCOPE_REVIEW_DIAGNOSES for diagnosis in diagnoses):
+            errors.append(f"scope review `{review_id}` diagnoses must be a non-empty list of supported diagnoses")
+            diagnoses = []
+        page_decision = review.get("page_decision")
+        if page_decision not in {"retain", "split"}:
+            errors.append(f"scope review `{review_id}` page_decision must be retain or split")
+        split_diagnoses = [diagnosis for diagnosis in diagnoses if diagnosis in {"model_gap", "explanation_overload"}]
+        if split_diagnoses and page_decision != "split":
+            errors.append(f"scope review `{review_id}` {split_diagnoses[0]} requires page_decision: split")
+        hierarchy = review.get("hierarchy")
+        if hierarchy != "none" and not nonempty_string(hierarchy):
+            errors.append(f"scope review `{review_id}` hierarchy must be none or a model id")
+        if page_decision == "retain" and hierarchy != "none":
+            errors.append(f"scope review `{review_id}` retained pages must set hierarchy: none")
+        if not nonempty_string(review.get("rationale")):
+            errors.append(f"scope review `{review_id}` must set a non-empty rationale")
+
+        members = review.get("members")
+        resolved_members: list[tuple[str, int, dict[str, Any]]] = []
+        if not isinstance(members, list) or len(members) < 2:
+            errors.append(f"scope review `{review_id}` must reference at least two code evidence entries")
+        else:
+            seen_members: set[tuple[str, int]] = set()
+            for member in members:
+                stage_id = member.get("stage") if isinstance(member, dict) else None
+                evidence_id = member.get("evidence") if isinstance(member, dict) else None
+                key = (stage_id, evidence_id)
+                if not nonempty_string(stage_id) or not isinstance(evidence_id, int):
+                    errors.append(f"scope review `{review_id}` members need stage and integer evidence")
+                    continue
+                if key in seen_members:
+                    errors.append(f"scope review `{review_id}` duplicates member `{stage_id}` evidence {evidence_id}")
+                    continue
+                seen_members.add(key)
+                page = records_by_id.get(stage_id)
+                evidence = next((item for item in (page or {}).get("evidence", []) if item.get("id") == evidence_id), None)
+                if not page or page["metadata"].get("kind") != "stage" or not evidence or evidence.get("kind") not in {"source", "diff"}:
+                    errors.append(f"scope review `{review_id}` member `{stage_id}` evidence {evidence_id} must reference source or diff stage evidence")
+                    continue
+                member_refs.add(key)
+                resolved_members.append((stage_id, evidence_id, page))
+                page["scope_review_ids"].add(review_id)
+        member_stage_ids = {stage_id for stage_id, _evidence_id, _page in resolved_members}
+        if page_decision == "retain" and len(member_stage_ids) > 1:
+            errors.append(f"scope review `{review_id}` retain decision must keep all members on one stage")
+        if page_decision == "split" and len(member_stage_ids) < 2:
+            errors.append(f"scope review `{review_id}` split decision must place members on at least two stages")
+        if hierarchy != "none" and nonempty_string(hierarchy):
+            model_record = records_by_id.get(hierarchy)
+            if not model_record or model_record["metadata"].get("kind") != "model":
+                errors.append(f"scope review `{review_id}` hierarchy `{hierarchy}` must reference a model page")
+            else:
+                for _stage_id, _evidence_id, page in resolved_members:
+                    ancestors, _cyclic = model_ancestors(page)
+                    if hierarchy not in ancestors:
+                        errors.append(f"scope review `{review_id}` members must descend from model `{hierarchy}`")
+                        break
+        normalized_reviews.append({
+            "id": review_id,
+            "signal": signal,
+            "diagnoses": diagnoses,
+            "page_decision": page_decision,
+            "hierarchy": hierarchy,
+            "rationale": review.get("rationale"),
+            "members": [{"stage": stage_id, "evidence": evidence_id} for stage_id, evidence_id, _page in resolved_members],
+        })
+
+    for record in records:
+        code_evidence_ids = {item["id"] for item in record["evidence"] if item.get("kind") in {"source", "diff"}}
+        if record["metadata"].get("kind") == "stage" and len(code_evidence_ids) >= 2:
+            uncovered = sorted(evidence_id for evidence_id in code_evidence_ids if (record["id"], evidence_id) not in member_refs)
+            if uncovered:
+                errors.append(f"section starting at line {record['section_start']}: multiple code evidence entries require scope_reviews coverage for ids {', '.join(map(str, uncovered))}")
+        record["inventory_page"]["scope_review_ids"] = sorted(record["scope_review_ids"])
+        record["inventory_page"].setdefault("parent", record["metadata"].get("parent"))
+        record["inventory_page"].setdefault("children", [child["id"] for child in children_by_parent.get(record["id"], [])])
+    inventory["scope_reviews"] = normalized_reviews
     return errors
 
 
@@ -1093,6 +1276,7 @@ def build_v2_inventory(project_root: Path, markdown_path: Path, allow_partial_di
     runtime_stage_ids: set[str] = set()
     execution_maps: list[dict[str, Any]] = []
     stage_records: list[dict[str, Any]] = []
+    page_records: list[dict[str, Any]] = []
     explained_hunks: set[tuple[str, str]] = set()
     for section_index, (section_start, section_lines) in enumerate(sections):
         metadata, content, metadata_errors = split_v2_metadata(section_start, section_lines)
@@ -1122,7 +1306,24 @@ def build_v2_inventory(project_root: Path, markdown_path: Path, allow_partial_di
                     "node_ids": set(evidence.get("node_ids", [])),
                     "edge_ids": set(evidence.get("edge_ids", [])),
                 })
-        inventory["pages"].append({"id": identifier, "kind": metadata.get("kind"), "section_start_line": section_start, "heading": heading_data(content)[0] if heading_data(content) else None, "map_anchor": metadata.get("map_anchor"), "evidence": evidence_inventory})
+        inventory_page = {
+            "id": identifier,
+            "kind": metadata.get("kind"),
+            "section_start_line": section_start,
+            "heading": heading_data(content)[0] if heading_data(content) else None,
+            "map_anchor": metadata.get("map_anchor"),
+            "evidence": evidence_inventory,
+        }
+        inventory["pages"].append(inventory_page)
+        page_records.append({
+            "id": identifier,
+            "section_start": section_start,
+            "metadata": metadata,
+            "evidence": evidence_inventory,
+            "inventory_page": inventory_page,
+            "scope_review_ids": set(),
+        })
+    errors.extend(v2_scope_and_hierarchy_errors(page_records, inventory))
     covered_by_any_map: set[str] = set()
     for execution_map in execution_maps:
         covered = set(execution_map["coverage"])

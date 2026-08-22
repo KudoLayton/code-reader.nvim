@@ -65,6 +65,89 @@ def execution_map_walkthrough() -> str:
     )
 
 
+def scope_review_walkthrough(
+    diagnoses: list[str] | None = None,
+    page_decision: str = "retain",
+    hierarchy: str = "none",
+    include_model: bool = False,
+    child_parent: str | None = None,
+) -> str:
+    diagnoses = diagnoses or ["implementation_complexity"]
+    second_stage = "normalize-default" if page_decision == "split" else "normalize-request"
+    second_evidence = 1 if page_decision == "split" else 2
+    review_lines = [
+        "scope_reviews:",
+        "  - id: request-normalization",
+        "    signal: multiple_scopes",
+        "    members:",
+        "      - stage: normalize-request",
+        "        evidence: 1",
+        f"      - stage: {second_stage}",
+        f"        evidence: {second_evidence}",
+        "    diagnoses:",
+    ]
+    review_lines.extend(f"      - {diagnosis}" for diagnosis in diagnoses)
+    review_lines.extend(
+        [
+            f"    page_decision: {page_decision}",
+            f"    hierarchy: {hierarchy}",
+            "    rationale: The two ranges implement one normalization responsibility.",
+        ]
+    )
+    model_lines = []
+    if include_model:
+        model_lines = [
+            "---", "# Request normalization model", "```code-reader", "kind: model", "id: request-normalization-model",
+            "question: How do the normalization steps jointly establish a request?", "state:", "  status: not_applicable",
+            "  reason: The model summarizes its children.", "responsibility:", "  status: applicable", "  items:",
+            "    - owner: request.normalize", "      action: Establish a normalized request contract", "hierarchy:",
+            "  contract: The request has canonical fields before dispatch.",
+            "  decomposition: Parsing and defaults are explained separately because each has a local rule.", "```",
+            "The child stages establish the shared contract.",
+        ]
+    parent_lines = [f"parent: {child_parent}"] if child_parent else []
+    stage_evidence = [
+        "  - id: 1", "    kind: source", "    target: src/example.py#L1-L2", "    claim: The first range parses the required field.",
+    ]
+    followup_stage = []
+    if page_decision == "split":
+        followup_stage = [
+            "---", "# 2. Supply defaults", "```code-reader", "kind: stage", "id: normalize-default", *parent_lines,
+            "question: How are optional fields defaulted?", "trigger: Parsing leaves an optional field absent", "state:",
+            "  status: applicable", "  changes:", "    - subject: request", "      owner: request.normalize",
+            "      before: parsed", "      cause: defaulting runs", "      after: normalized",
+            "      invariant: optional fields have canonical values", "responsibility:", "  status: applicable", "  items:",
+            "    - owner: request.normalize", "      action: Supply the optional default", "failure:",
+            "  status: not_applicable", "  reason: The example default always applies.", "evidence:",
+            "  - id: 1", "    kind: source", "    target: src/example.py#L4-L5", "    claim: The range supplies the optional default.", "```",
+            "The defaulting operation is [1](code-reader://evidence/1).",
+        ]
+    else:
+        stage_evidence.extend(
+            ["  - id: 2", "    kind: source", "    target: src/example.py#L4-L5", "    claim: The second range supplies the optional default."]
+        )
+    return "\n".join(
+        [
+            "---", "type: code-reader", "version: 2", "feature: request-normalization", "---",
+            "# Overview", "```code-reader", "kind: overview", "id: request-normalization",
+            "question: How is the request normalized?", "state:", "  status: not_applicable",
+            "  reason: The overview is descriptive.", "responsibility:", "  status: applicable", "  items:",
+            "    - owner: app.handle", "      action: Coordinate request normalization", *review_lines, "```",
+            "The overview records why its source scopes share one explanation page.", *model_lines,
+            "---", "# 1. Normalize request", "```code-reader", "kind: stage", "id: normalize-request", *parent_lines,
+            "question: How are request fields normalized?", "trigger: app.handle receives a request", "state:",
+            "  status: applicable", "  changes:", "    - subject: request", "      owner: request.normalize",
+            "      before: raw", "      cause: normalization runs", "      after: normalized",
+            "      invariant: required fields have canonical values", "responsibility:", "  status: applicable", "  items:",
+            "    - owner: request.normalize", "      action: Parse the required field", "failure:",
+            "  status: not_applicable", "  reason: The example always supplies valid input.", "evidence:", *stage_evidence, "```",
+            "The first operation is [1](code-reader://evidence/1).",
+            *( ["The default operation is [2](code-reader://evidence/2)."] if page_decision == "retain" else [] ),
+            *followup_stage,
+        ]
+    )
+
+
 class ValidateCodeReaderMarkdownTests(unittest.TestCase):
     def test_unregistered_language_preserves_provision_required_status(self) -> None:
         with patch.object(
@@ -305,7 +388,11 @@ class ValidateCodeReaderMarkdownTests(unittest.TestCase):
                     "# Overview", "```code-reader", "kind: overview", "id: changed-return-values",
                     "question: How does the patch change returned values?", "state:", "  status: not_applicable",
                     "  reason: Overview is descriptive.", "responsibility:", "  status: applicable", "  items:",
-                    "    - owner: example.py", "      action: Return the changed values", "```", "---", "# 1. Change returns",
+                    "    - owner: example.py", "      action: Return the changed values", "scope_reviews:",
+                    "  - id: changed-returns", "    signal: multiple_scopes", "    members:",
+                    "      - stage: change-returns", "        evidence: 1", "      - stage: change-returns", "        evidence: 2",
+                    "    diagnoses:", "      - implementation_complexity", "    page_decision: retain", "    hierarchy: none",
+                    "    rationale: Both hunks apply the same return-value rule.", "```", "---", "# 1. Change returns",
                     "```code-reader", "kind: stage", "id: change-returns", "question: Which returns change?",
                     "trigger: The revised code path executes", "state:", "  status: applicable", "  changes:",
                     "    - subject: return value", "      owner: example.py", "      before: old value", "      cause: patch applies",
@@ -319,6 +406,84 @@ class ValidateCodeReaderMarkdownTests(unittest.TestCase):
                 encoding="utf-8",
             )
             self.assertEqual(validate_code_reader_markdown.validate_doc(root, markdown_path, False), [])
+
+    def test_scope_review_allows_implementation_complexity_to_remain_on_one_page(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            source_path = root / "src" / "example.py"
+            source_path.parent.mkdir()
+            source_path.write_text("def parse():\n    return 'parsed'\n\ndef defaults():\n    return 'default'\n", encoding="utf-8")
+            markdown_path = root / "walkthrough.md"
+            markdown_path.write_text(scope_review_walkthrough(), encoding="utf-8")
+
+            errors, inventory = validate_code_reader_markdown.build_inventory(root, markdown_path, False)
+
+            self.assertEqual(errors, [])
+            self.assertEqual(inventory["scope_reviews"][0]["page_decision"], "retain")
+            self.assertEqual(inventory["pages"][1]["scope_review_ids"], ["request-normalization"])
+
+    def test_scope_review_requires_a_page_split_for_model_gap_or_explanation_overload(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            source_path = root / "src" / "example.py"
+            source_path.parent.mkdir()
+            source_path.write_text("def parse():\n    return 'parsed'\n\ndef defaults():\n    return 'default'\n", encoding="utf-8")
+            markdown_path = root / "walkthrough.md"
+            for diagnosis in ("model_gap", "explanation_overload"):
+                markdown_path.write_text(scope_review_walkthrough([diagnosis]), encoding="utf-8")
+                errors = validate_code_reader_markdown.validate_doc(root, markdown_path, False)
+                self.assertTrue(any(f"{diagnosis} requires page_decision: split" in error for error in errors))
+
+    def test_hierarchical_scope_review_requires_an_explicit_model_parent(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            source_path = root / "src" / "example.py"
+            source_path.parent.mkdir()
+            source_path.write_text("def parse():\n    return 'parsed'\n\ndef defaults():\n    return 'default'\n", encoding="utf-8")
+            markdown_path = root / "walkthrough.md"
+            markdown_path.write_text(
+                scope_review_walkthrough(
+                    diagnoses=["model_gap"],
+                    page_decision="split",
+                    hierarchy="request-normalization-model",
+                    include_model=True,
+                    child_parent="request-normalization-model",
+                ),
+                encoding="utf-8",
+            )
+
+            errors, inventory = validate_code_reader_markdown.build_inventory(root, markdown_path, False)
+
+            self.assertEqual(errors, [])
+            self.assertEqual(inventory["pages"][1]["children"], ["normalize-request", "normalize-default"])
+            self.assertEqual(inventory["pages"][2]["parent"], "request-normalization-model")
+
+    def test_hierarchical_model_requires_contract_decomposition_and_multiple_children(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            source_path = root / "src" / "example.py"
+            source_path.parent.mkdir()
+            source_path.write_text("def parse():\n    return 'parsed'\n\ndef defaults():\n    return 'default'\n", encoding="utf-8")
+            markdown_path = root / "walkthrough.md"
+            markdown_path.write_text(
+                scope_review_walkthrough(
+                    diagnoses=["model_gap"],
+                    page_decision="split",
+                    hierarchy="request-normalization-model",
+                    include_model=True,
+                    child_parent="request-normalization-model",
+                )
+                .replace("  contract: The request has canonical fields before dispatch.\n", "")
+                .replace("  decomposition: Parsing and defaults are explained separately because each has a local rule.\n", "")
+                .replace("id: normalize-default\nparent: request-normalization-model\n", "id: normalize-default\n"),
+                encoding="utf-8",
+            )
+
+            errors = validate_code_reader_markdown.validate_doc(root, markdown_path, False)
+
+            self.assertTrue(any("hierarchy.contract" in error for error in errors))
+            self.assertTrue(any("hierarchy.decomposition" in error for error in errors))
+            self.assertTrue(any("at least two children" in error for error in errors))
 
 
 if __name__ == "__main__":
