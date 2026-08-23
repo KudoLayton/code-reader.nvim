@@ -102,6 +102,12 @@ vim.fn.writefile({
   "      cause: parser runs",
   "      after: decoded",
   "      invariant: decoded request has defaults",
+  "    - subject: parser_cache",
+  "      owner: cache.store",
+  "      before: empty",
+  "      cause: parser result is cached",
+  "      after: populated",
+  "      invariant: cache entry belongs to the decoded request",
   "responsibility:",
   "  status: applicable",
   "  items:",
@@ -164,6 +170,7 @@ eq(explanation_text:find("## Execution position", 1, true) ~= nil, true, "stage 
 eq(explanation_text:find("Current explanation scope", 1, true) ~= nil, true, "stage execution position scope")
 eq(explanation_text:find("### State changes", 1, true) ~= nil, true, "stage state changes heading")
 eq(explanation_text:find("#### request", 1, true) ~= nil, true, "state change is a bullet card")
+eq(explanation_text:find("#### parser_cache", 1, true) ~= nil, true, "independent state change has its own bullet card")
 eq(explanation_text:find("| Subject |", 1, true) == nil, true, "state transition table is removed")
 eq(explanation_text:find("### Responsibilities", 1, true) ~= nil, true, "stage responsibilities heading")
 eq(explanation_text:find("| Owner |", 1, true) == nil, true, "responsibility table is removed")

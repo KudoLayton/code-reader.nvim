@@ -149,6 +149,96 @@ def scope_review_walkthrough(
 
 
 class ValidateCodeReaderMarkdownTests(unittest.TestCase):
+    def test_state_changes_require_atomic_complete_cards(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            source_path = root / "src" / "example.py"
+            source_path.parent.mkdir()
+            source_path.write_text("def parse_request():\n    return True\n", encoding="utf-8")
+            markdown_path = root / "walkthrough.md"
+            valid = source_walkthrough()
+            change_block = "\n".join(
+                [
+                    "  changes:",
+                    "    - subject: request",
+                    "      owner: request.parse_request",
+                    "      before: raw",
+                    "      cause: parsing succeeds",
+                    "      after: decoded",
+                    "      invariant: decoded request has defaults",
+                ]
+            )
+
+            multiple_cards = valid.replace(
+                change_block,
+                "\n".join(
+                    [
+                        change_block,
+                        "    - subject: validation_cache",
+                        "      owner: cache.store",
+                        "      before: empty",
+                        "      cause: validation result is stored",
+                        "      after: populated",
+                        "      invariant: entries belong to the current request",
+                    ]
+                ),
+            )
+            markdown_path.write_text(multiple_cards, encoding="utf-8")
+            self.assertEqual(validate_code_reader_markdown.validate_doc(root, markdown_path, False), [])
+
+            for replacement, expected in (
+                ("  changes: []", "state.changes must be a non-empty list"),
+                ("  changes: request", "state.changes must be a non-empty list"),
+                ("  status: applicable", "state.changes must be a non-empty list"),
+            ):
+                markdown_path.write_text(valid.replace(change_block, replacement), encoding="utf-8")
+                errors = validate_code_reader_markdown.validate_doc(root, markdown_path, False)
+                self.assertTrue(any(expected in error for error in errors), replacement)
+
+            for field, value in (
+                ("subject", "request"),
+                ("owner", "request.parse_request"),
+                ("before", "raw"),
+                ("cause", "parsing succeeds"),
+                ("after", "decoded"),
+                ("invariant", "decoded request has defaults"),
+            ):
+                field_line = (
+                    f"    - {field}: {value}\n"
+                    if field == "subject"
+                    else f"      {field}: {value}\n"
+                )
+                replacement = "    - ignored: ignored\n" if field == "subject" else ""
+                markdown_path.write_text(
+                    valid.replace(field_line, replacement), encoding="utf-8"
+                )
+                errors = validate_code_reader_markdown.validate_doc(root, markdown_path, False)
+                self.assertTrue(
+                    any(f"state change 1 must set {field}" in error for error in errors),
+                    f"{field}: {errors}",
+                )
+
+            for field, value in (
+                ("subject", "request and validation_cache"),
+                ("subject", "요청과 캐시"),
+                ("subject", "request와validation_cache"),
+                ("owner", "request.parse_request and cache.store"),
+            ):
+                field_prefix = "    - subject: request" if field == "subject" else "      owner: request.parse_request"
+                replacement = f"    - subject: {value}" if field == "subject" else f"      owner: {value}"
+                markdown_path.write_text(
+                    valid.replace(field_prefix, replacement),
+                    encoding="utf-8",
+                )
+                errors = validate_code_reader_markdown.validate_doc(root, markdown_path, False)
+                self.assertTrue(any(f"state change 1 {field} must name one" in error for error in errors), value)
+
+            aggregate_state = valid.replace("      before: raw", "      before: raw fields, mode unset").replace(
+                "      after: decoded", "      after: decoded and normalized"
+            )
+            markdown_path.write_text(aggregate_state, encoding="utf-8")
+            self.assertEqual(validate_code_reader_markdown.validate_doc(root, markdown_path, False), [])
+
     def test_unregistered_language_preserves_provision_required_status(self) -> None:
         with patch.object(
             bootstrap_static_analysis,

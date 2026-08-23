@@ -70,14 +70,8 @@ map_anchor:
 question: Where is the complete request process coordinated?
 trigger: app.handle receives raw_request.
 state:
-  status: applicable
-  changes:
-    - subject: request context
-      owner: app.handle
-      before: raw_request only
-      cause: build_context, parsing, and validation run
-      after: parsed request plus validation result
-      invariant: response rendering receives either parsed data or a problem.
+  status: not_applicable
+  reason: app.handle coordinates parsing and validation; their separately owned state transitions are explained by the following stages.
 responsibility:
   status: applicable
   items:

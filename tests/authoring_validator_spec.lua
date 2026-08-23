@@ -70,6 +70,35 @@ vim.fn.writefile(document("src/app.lua#L1-L3"), valid_path)
 local valid_status = run_validator(valid_path)
 eq(valid_status, 0, "validator accepts a v2 source stage")
 
+local multiple_state_path = tmp .. "/multiple-state.md"
+local multiple_state_document = document("src/app.lua#L1-L3")
+for index, line in ipairs(multiple_state_document) do
+  if line == "      invariant: result follows the function contract" then
+    table.insert(multiple_state_document, index + 1, "    - subject: result_cache")
+    table.insert(multiple_state_document, index + 2, "      owner: cache.store")
+    table.insert(multiple_state_document, index + 3, "      before: empty")
+    table.insert(multiple_state_document, index + 4, "      cause: result is cached")
+    table.insert(multiple_state_document, index + 5, "      after: populated")
+    table.insert(multiple_state_document, index + 6, "      invariant: cache entry belongs to the result")
+    break
+  end
+end
+vim.fn.writefile(multiple_state_document, multiple_state_path)
+local multiple_state_status = run_validator(multiple_state_path)
+eq(multiple_state_status, 0, "validator accepts multiple independent state cards on one page")
+
+local compound_state_path = tmp .. "/compound-state.md"
+local compound_state_document = document("src/app.lua#L1-L3")
+for index, line in ipairs(compound_state_document) do
+  if line == "    - subject: result" then
+    compound_state_document[index] = "    - subject: result와result_cache"
+    break
+  end
+end
+vim.fn.writefile(compound_state_document, compound_state_path)
+local compound_state_status = run_validator(compound_state_path)
+eq(compound_state_status ~= 0, true, "validator rejects a compound state subject")
+
 local invalid_path = tmp .. "/invalid.md"
 vim.fn.writefile(document("src/app.lua#L1-L3", "[2](code-reader://evidence/2)"), invalid_path)
 local invalid_status = run_validator(invalid_path)

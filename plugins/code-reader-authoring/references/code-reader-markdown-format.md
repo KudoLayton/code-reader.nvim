@@ -96,7 +96,41 @@ The transition is implemented in [1](code-reader://evidence/1).
 
 The prose explains the mechanism, consequence, and reader decision. It must not restate the entire source range. Evidence ids begin at 1 in each section, have no gaps, and every id appears in a `code-reader://evidence/<id>` Markdown link in that section.
 
-Use three to seven stages for the normal path. Aggregate mechanical operations under the decision they serve. For a repeated operation, show its first occurrence, last outcome, and the rule that makes the middle occurrences equivalent; do not spend a stage on each repetition. Split a stage only when the reader question, state transition, owner, or outcome changes.
+## Atomic state transitions
+
+`state.status: applicable` requires a non-empty `changes` list. Each list item is one rendered state card and must name exactly one state bearer, one owner, and that bearer's own `before`, `cause`, `after`, and `invariant`. A stage may contain multiple cards without becoming multiple pages.
+
+Do not merge independently changing data merely because one function touches it or one stage explains it. Split a change when its state bearer, owner, lifecycle, invariant, or evidence rationale can differ. In particular, never use a list or conjunction in `subject` or `owner` to summarize separate transitions.
+
+```yaml
+# Invalid: request and validation_cache have independent owners and lifecycles.
+changes:
+  - subject: request and validation_cache
+    owner: parser and cache.store
+    before: raw and empty
+    cause: parsing stores a result
+    after: decoded and populated
+    invariant: defaults and cache membership hold
+
+# Valid: both cards can remain on the same explanation page.
+changes:
+  - subject: request
+    owner: parser
+    before: raw
+    cause: parsing runs
+    after: decoded
+    invariant: defaults are present
+  - subject: validation_cache
+    owner: cache.store
+    before: empty
+    cause: the validation result is stored
+    after: populated
+    invariant: the entry belongs to the request
+```
+
+A domain aggregate remains one valid subject when it has one owner and one lifecycle. Its `before` and `after` may describe several coupled fields, provided they are all state of that aggregate. For example, `subject: request` may move from `raw fields, mode unset` to `decoded and normalized`; it must not conceal a separate cache, response, session, or owner handoff.
+
+Use three to seven stages for the normal path. Aggregate mechanical operations under the decision they serve, but never aggregate independent state cards. For a repeated operation, show its first occurrence, last outcome, and the rule that makes the middle occurrences equivalent; do not spend a stage on each repetition. Split a stage only when the reader question, state transition, owner, or outcome changes.
 
 ## Scope reviews and conceptual hierarchy
 

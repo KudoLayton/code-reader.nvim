@@ -22,6 +22,15 @@ EVIDENCE_LINK_RE = re.compile(r"\[([^\]]+)\]\(code-reader://evidence/(\d+)\)")
 SKETCH_PURPOSES = {"execution-map", "handoff-map", "state-map", "structure-map"}
 SCOPE_REVIEW_SIGNALS = {"split_required", "multiple_scopes"}
 SCOPE_REVIEW_DIAGNOSES = {"model_gap", "explanation_overload", "implementation_complexity"}
+STATE_CHANGE_FIELDS = ("subject", "owner", "before", "cause", "after", "invariant")
+COMPOUND_STATE_LABEL_PATTERNS = (
+    re.compile(r"[,;]"),
+    re.compile(r"&"),
+    re.compile(r"\b(?:and|or)\b", re.IGNORECASE),
+    re.compile(r"\S(?:와|과)\s+\S"),
+    re.compile(r"(?<=[A-Za-z0-9_])(?:와|과)(?=[A-Za-z0-9_])"),
+    re.compile(r"\S\s+(?:및|그리고|또는)\s+\S"),
+)
 
 
 SOURCE_DIRECTIVE_RE = re.compile(r"^\s*Source:\s*`?([\w._\-/\\]+)#L(\d+)(?:-L?(\d+))?`?\s*$")
@@ -907,6 +916,37 @@ def nonempty_string(value: Any) -> bool:
     return isinstance(value, str) and bool(value.strip())
 
 
+def has_compound_state_label(value: str) -> bool:
+    return any(pattern.search(value) for pattern in COMPOUND_STATE_LABEL_PATTERNS)
+
+
+def v2_state_change_errors(section_start: int, metadata: dict[str, Any]) -> list[str]:
+    state = metadata.get("state")
+    if not isinstance(state, dict) or state.get("status") != "applicable":
+        return []
+
+    errors: list[str] = []
+    changes = state.get("changes")
+    if not isinstance(changes, list) or not changes:
+        return [f"section starting at line {section_start}: state.changes must be a non-empty list when state.status is applicable"]
+
+    for index, change in enumerate(changes, start=1):
+        if not isinstance(change, dict):
+            errors.append(f"section starting at line {section_start}: state change {index} must be a mapping")
+            continue
+        for field_name in STATE_CHANGE_FIELDS:
+            if not nonempty_string(change.get(field_name)):
+                errors.append(f"section starting at line {section_start}: state change {index} must set {field_name}")
+        for field_name, role in (("subject", "state bearer"), ("owner", "owner")):
+            value = change.get(field_name)
+            if nonempty_string(value) and has_compound_state_label(value):
+                errors.append(
+                    f"section starting at line {section_start}: state change {index} {field_name} must name one {role}; "
+                    "split compound values into separate changes"
+                )
+    return errors
+
+
 def v2_scope_and_hierarchy_errors(
     records: list[dict[str, Any]], inventory: dict[str, Any]
 ) -> list[str]:
@@ -1294,6 +1334,7 @@ def build_v2_inventory(project_root: Path, markdown_path: Path, allow_partial_di
             runtime_stage_ids.add(identifier)
             stage_records.append({"id": identifier, "section_start": section_start, "map_anchor": metadata.get("map_anchor")})
         errors.extend(v2_required_model_errors(section_start, metadata))
+        errors.extend(v2_state_change_errors(section_start, metadata))
         evidence_errors, evidence_inventory, hunk_refs = v2_evidence_errors(project_root, markdown_path, section_start, metadata, content, diff_hunks)
         errors.extend(evidence_errors)
         explained_hunks.update(hunk_refs)
